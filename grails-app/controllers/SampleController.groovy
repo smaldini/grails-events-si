@@ -12,13 +12,17 @@ import org.grails.plugin.platform.events.Event
  class SampleController {
 
      def grailsEventsPublisher
+     
+     def testSave(){
+         render new Author(name:'test').save()
+     }
 
      def test(){
-         grailsEventsPublisher.event(new Event(event:'sampleHello', data:"world"))
+         println grailsEventsPublisher.event(new Event(event:'sampleHello', data:'world'))
          println "ok"
-         grailsEventsPublisher.eventAsync(new Event(event: 'sampleHello', data:"world 2"))
+         println grailsEventsPublisher.eventAsync(new Event(event: 'sampleHello', data:"world 2"))
          println "ok async"
-         grailsEventsPublisher.eventAsync(new Event(event: 'sampleHello', data:"world 3")).get()
+         //println grailsEventsPublisher.eventAsync(new Event(event: 'sampleHello', data:"world 3")).get()
          println "ok async wait"
 
          render "ok"

@@ -1,5 +1,6 @@
-import org.grails.plugin.platform.events.publisher.SpringIntegrationEventsPublisher
+import org.grails.plugin.platform.events.Event
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway
+import org.grails.plugin.platform.events.publisher.SpringIntegrationEventsPublisher
 import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistry
 
 class EventsSiGrailsPlugin {
@@ -51,28 +52,56 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
         xmlns si: 'http://www.springframework.org/schema/integration'
         xmlns task: "http://www.springframework.org/schema/task"
+        xmlns 'siEvent': "http://www.springframework.org/schema/integration/event"
 
         task.executor(id: "grailsTopicExecutor", 'pool-size': 10)//todo config
 
         def grailsChannel = "grailsPipeline" //todo config
+        def gormChannel = "grailsGormPipeline" //todo config
+        //def grailsReplyChannel = "grailsReplyPipeline" //todo config
 
-        si.'publish-subscribe-channel'(id:grailsChannel)
+        /* Declare main grails pipeline and its router to reach listeners */
+        si.'publish-subscribe-channel'(id: grailsChannel, 'apply-sequence': true)
+        //si.'channel'(id: grailsReplyChannel )
 
-        si.'chain'('input-channel':grailsChannel){
-            si.'transformer'(expression:"payload.getData()")
-            si.'header-value-router'('header-name': EventsPublisherGateway.TARGET_CHANNEL)
+        si.chain('input-channel': grailsChannel) {
+            si.transformer(expression: "payload.getData()")
+            si.'header-value-router'('header-name': EventsPublisherGateway.TARGET_CHANNEL,
+                    'ignore-send-failures': true,
+                    'resolution-required': false,
+                    'default-output-channel': "nullChannel"
+            )
         }
 
         si.gateway(
                 id: 'eventsPublisherGateway',
                 'service-interface': EventsPublisherGateway.class.name,
-                'default-request-channel': 'grailsPipeline'
-        ){
-            si.method(name:'sendAsync', requestChannel: grailsChannel)
-            si.method(name:'send', requestChannel: grailsChannel)
+                'default-request-channel': grailsChannel,
+                'async-executor': 'grailsTopicExecutor'
+        ) {
+            si.method(name: 'sendAsync', requestChannel: grailsChannel)
+            si.method(name: 'send', requestChannel: grailsChannel)
         }
 
-        grailsEventsPublisher(SpringIntegrationEventsPublisher){
+        //si.'aggregator'(id:'multipleListenersAggregator', 'input-channel': grailsReplyChannel)
+
+        /* END GENERAL */
+
+        /* plug GORM events */
+        si.channel(id: gormChannel)
+        si.chain('input-channel': gormChannel, 'output-channel': grailsChannel) {
+            si.filter(expression:"payload.getEntityObject() != null")
+            si.'header-enricher' {
+                si.header(name: EventsPublisherGateway.TARGET_CHANNEL, ref: 'gormTopicConverter', method: 'convert')
+            }
+            si.transformer(expression: "new ${Event.class.name}(headers.get('$EventsPublisherGateway.TARGET_CHANNEL'), payload.getEntityObject())")
+        }
+
+        siEvent.'inbound-channel-adapter'(channel: gormChannel, 'event-types': "org.grails.datastore.mapping.engine.event.AbstractPersistenceEvent")
+
+        /* END GORM CONFIG */
+
+        grailsEventsPublisher(SpringIntegrationEventsPublisher) {
             eventsPublisherGateway = ref('eventsPublisherGateway')
         }
         grailsEventsRegistry(SpringIntegrationEventsRegistry)

@@ -9,6 +9,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.integration.channel.PublishSubscribeChannel;
 import org.springframework.integration.handler.ServiceActivatingHandler;
+import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Method;
 
@@ -49,17 +50,22 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         }
         return channel;
     }
-
-    public void addListener(String topic, Object bean, String callbackName) {
+    
+    private void registerHandler(Object bean, Method callback, String topic){
+        ServiceActivatingHandler serviceActivatingHandler =
+                new ServiceActivatingHandler(bean, callback);
+        serviceActivatingHandler.setBeanName(bean.getClass().getName()+"#"+callback.getName());
+        serviceActivatingHandler.setRequiresReply(true);
         PublishSubscribeChannel channel = getOrCreateChannel(topic);
-        ServiceActivatingHandler serviceActivatingHandler = new ServiceActivatingHandler(bean, callbackName);
         channel.subscribe(serviceActivatingHandler);
     }
 
+    public void addListener(String topic, Object bean, String callbackName) {
+        registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName) , topic);
+    }
+
     public void addListener(String topic, Object bean, Method callback) {
-        PublishSubscribeChannel channel = getOrCreateChannel(topic);
-        ServiceActivatingHandler serviceActivatingHandler = new ServiceActivatingHandler(bean, callback);
-        channel.subscribe(serviceActivatingHandler);
+        registerHandler(bean, callback, topic);
     }
 
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {

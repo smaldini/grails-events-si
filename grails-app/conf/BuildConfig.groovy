@@ -17,6 +17,9 @@ grails.project.dependency.resolution = {
         runtime('org.springframework.integration:spring-integration-core:2.1.0.RC2') {
             excludes 'spring-context', 'spring-aop'
         }
+        runtime('org.springframework.integration:spring-integration-event:2.1.0.RC2') {
+            excludes 'spring-context'
+        }
         // runtime 'mysql:mysql-connector-java:5.1.5'
     }
 

@@ -10,4 +10,7 @@ package org.grails.plugin.platform.events.dispatcher;
  * [Does stuff]
  */
 public class SprintIntegrationEventsDispatcher {
+
+
+
 }
