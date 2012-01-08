@@ -11,6 +11,8 @@ package org.grails.plugin.platform.events.dispatcher;
  */
 public class SprintIntegrationEventsDispatcher {
 
+    public static final String GORM_EVENT_KEY = "applicationEvent";
+
 
 
 }

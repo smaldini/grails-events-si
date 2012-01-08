@@ -1,7 +1,10 @@
 package org.grails.plugin.platform.events.publisher;
 
 import org.grails.plugin.platform.events.Event;
+import org.springframework.integration.Message;
+import org.springframework.integration.MessageHeaders;
 import org.springframework.integration.annotation.Header;
+import org.springframework.integration.core.PollableChannel;
 
 import java.util.concurrent.Future;
 

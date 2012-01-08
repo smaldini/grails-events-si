@@ -14,15 +14,15 @@ import org.grails.plugin.platform.events.Event
      def grailsEventsPublisher
      
      def testSave(){
-         render new Author(name:'test').save()
+         render new Book(title:'test').save()
      }
 
      def test(){
-         println grailsEventsPublisher.event(new Event(event:'sampleHello', data:'world'))
+         println "++" + grailsEventsPublisher.event(new Event(event:'sampleHello', data:'world'))
          println "ok"
-         println grailsEventsPublisher.eventAsync(new Event(event: 'sampleHello', data:"world 2"))
+         println "-"+ grailsEventsPublisher.eventAsync(new Event(event: 'sampleHello', data:"world 2"))
          println "ok async"
-         //println grailsEventsPublisher.eventAsync(new Event(event: 'sampleHello', data:"world 3")).get()
+         println "cccc "+ grailsEventsPublisher.eventAsync(new Event(event: 'sampleHello', data:"world 3")).get()
          println "ok async wait"
 
          render "ok"

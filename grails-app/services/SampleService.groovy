@@ -1,5 +1,4 @@
 import org.grails.plugin.platform.events.Listener
-import org.springframework.integration.Message
 /**
  * @file
  * @author Stephane Maldini <smaldini@doc4web.com>
@@ -12,16 +11,25 @@ import org.springframework.integration.Message
  */
 class SampleService {
 
-    static transactional = false
+    static transactional = true
 
     @Listener('sampleHello')
-    def testEvent(Message msg) {
-        println "Hello test $msg"
-        false
+    void testEvent(test) {
+        println "Hello $test"
+        sleep(5000)
+        true
     }
 
     @Listener('beforeInsert')
-    def testEvent2(Book book) {
+    void testEvent2(Book book) {
+        sleep(5000)
         println "Hello3 $book.title"
+    }
+
+    @Listener('sampleHello')
+    def testEvent3(test) {
+        println "Hello - $test"
+        sleep(5000)
+        true
     }
 }
