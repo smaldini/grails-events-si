@@ -1,8 +1,10 @@
-### Events API
+### Events API : Spring Integration
 
 Plugin platforms brings an event API to allow decoupled communication within your application and beyond.
 If you want to use more features like routing mechanisms or external message brokers, you could also rely on specifics plugins which implement
-the platform events API such as Spring Integration (si-events).
+the platform events API such as Spring Integration (si-events, this plugin).
+
+It configures routes, channel, and gateway for you. It allows grails dev to integrate their events with external systems through Spring Integration adapters.
 
 #### Declaring an event listener
 A listener is an handler attached to a topic name, ie 'userLogged' or 'bookArchived'.
