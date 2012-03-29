@@ -32,7 +32,7 @@ class EventsSiGrailsPlugin {
     // the version or versions of Grails the plugin is designed for
     def grailsVersion = "2.0 > *"
     // the other plugins this plugin depends on
-    def dependsOn = ['platform-core':'0.1 > *']
+    def dependsOn = ['platformCore':'0.1 > *']
     // resources that are excluded from plugin packaging
     def pluginExcludes = [
             "grails-app/**"
