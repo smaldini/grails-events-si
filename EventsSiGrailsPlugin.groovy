@@ -1,24 +1,44 @@
-import org.grails.plugin.platform.events.Event
+/* Copyright 2011-2012 the original author or authors:
+ *
+ *    Marc Palmer (marc@grailsrocks.com)
+ *    Stéphane Maldini (stephane.maldini@gmail.com)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import org.grails.plugin.platform.events.EventObject
 import org.grails.plugin.platform.events.dispatcher.PersistentContextInterceptor
-import org.grails.plugin.platform.events.dispatcher.SprintIntegrationEventsDispatcher
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway
 import org.grails.plugin.platform.events.publisher.SpringIntegrationEventsPublisher
-import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistry
 import org.grails.plugin.platform.events.publisher.SpringIntegrationRepliesAggregator
+import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistry
+import org.grails.plugin.platform.events.dispatcher.EventsDispatcher
+import org.grails.plugin.platform.events.EventObject
+import org.grails.plugin.platform.events.publisher.EventsPublisher
 
 class EventsSiGrailsPlugin {
     // the plugin version
-    def version = "1.0-beta"
+    def version = "1.0.M1"
     // the version or versions of Grails the plugin is designed for
     def grailsVersion = "2.0 > *"
     // the other plugins this plugin depends on
-    def dependsOn = ['pluginPlatform': '1.0 > *']
+    def dependsOn = ['platform-core': '1.0 > *']
     // resources that are excluded from plugin packaging
     def pluginExcludes = [
             "grails-app/**"
     ]
 
-    def loadAfter = ['pluginPlatform']
+    def loadAfter = ['platform-core']
 
     // TODO Fill in these fields
     def title = "Events Si Plugin" // Headline display name of the plugin
@@ -51,19 +71,16 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
     def doWithSpring = {
         xmlns si: 'http://www.springframework.org/schema/integration'
-        xmlns task: "http://www.springframework.org/schema/task"
         xmlns siEvent: "http://www.springframework.org/schema/integration/event"
 
-        task.executor(id: "grailsTopicExecutor", 'pool-size': 10)//todo config
-
         def grailsChannel = "grailsPipeline" //todo config
-        def grailsReplyChannel = grailsChannel+'Reply' //todo config
+        def grailsReplyChannel = grailsChannel + 'Reply' //todo config
         def gormChannel = "grailsGormPipeline" //todo config
         def gormCancelChannel = gormChannel + 'Cancel'
         //def grailsReplyChannel = "grailsReplyPipeline" //todo config
 
         /* Declare main grails pipeline and its router to reach listeners */
-        channelPersistentContextInterceptor(PersistentContextInterceptor){
+        channelPersistentContextInterceptor(PersistentContextInterceptor) {
             persistenceInterceptor = ref("persistenceInterceptor")
             catchFlushExceptions = true //todo config
         }
@@ -73,12 +90,12 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
         si.channel(id: grailsChannel)
         si.channel(id: grailsReplyChannel)
 
-        si.aggregator(ref:'grailsTopicAggregator', 'input-channel':grailsReplyChannel)
+        si.aggregator(ref: 'grailsTopicAggregator', 'input-channel': grailsReplyChannel)
 
         //si.'channel'(id: grailsReplyChannel )
 
         si.chain('input-channel': grailsChannel) {
-            si.transformer(expression: "payload.getData()")
+            //si.transformer(expression: "payload.getData()")
             si.'header-value-router'('header-name': EventsPublisherGateway.TARGET_CHANNEL,
                     //'ignore-send-failures': true,
                     'resolution-required': false,
@@ -99,8 +116,9 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
         grailsEventsPublisher(SpringIntegrationEventsPublisher) {
             eventsPublisherGateway = ref('eventsPublisherGateway')
+            taskExecutor = ref('grailsTopicExecutor')
         }
-        grailsEventsRegistry(SpringIntegrationEventsRegistry){
+        grailsEventsRegistry(SpringIntegrationEventsRegistry) {
             outputChannel = ref(grailsReplyChannel)
             interceptor = ref('channelPersistentContextInterceptor')
         }
@@ -113,7 +131,7 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
         si.channel(id: gormCancelChannel)
         si.chain('input-channel': gormCancelChannel) {
             si.'service-activator'(expression: "@gormTopicSupport.processCancel(headers."
-                    + "get('$SprintIntegrationEventsDispatcher.GORM_EVENT_KEY'), payload)")
+                    + "get('$SpringIntegrationEventsRegistry.GORM_EVENT_KEY'), payload)")
         }
 
 
@@ -122,10 +140,11 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
             si.filter(expression: "payload.getEntityObject() != null")
             si.'header-enricher' {
                 si.header(name: EventsPublisherGateway.TARGET_CHANNEL, ref: 'gormTopicSupport', method: 'convertTopic')
-                si.header(name: SprintIntegrationEventsDispatcher.GORM_EVENT_KEY, expression: 'payload')
+                si.header(name: SpringIntegrationEventsRegistry.GORM_EVENT_KEY, expression: 'payload')
                 si.'reply-channel'(ref: gormCancelChannel)
             }
-            si.transformer(expression: "new ${Event.class.name}(headers.get('$EventsPublisherGateway.TARGET_CHANNEL'), payload.getEntityObject())")
+            si.transformer(expression:
+                    "new ${EventObject.class.name}(headers.get('$EventsPublisherGateway.TARGET_CHANNEL'), payload.getEntityObject(), '$EventsPublisher.GORM_EVENT_SOURCE')")
         }
 
         siEvent.'inbound-channel-adapter'(channel: gormChannel, 'event-types': "org.grails.datastore.mapping.engine.event.AbstractPersistenceEvent")

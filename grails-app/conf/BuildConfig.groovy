@@ -3,7 +3,9 @@ grails.project.test.class.dir = "target/test-classes"
 grails.project.test.reports.dir = "target/test-reports"
 grails.project.target.level = 1.5
 //grails.project.war.file = "target/${appName}-${appVersion}.war"
-grails.plugin.location.'pluginPlatform' = '../../grails-plugin-platform'
+if (appName == 'events-si') {
+    grails.plugin.location.'pluginPlatform' = '../../../platform-core'
+}
 
 grails.project.dependency.resolution = {
     inherits("global") {
@@ -14,21 +16,24 @@ grails.project.dependency.resolution = {
         grailsCentral()
     }
     dependencies {
-        compile('org.springframework.integration:spring-integration-core:2.1.0.RC2') {
-            excludes 'spring-context', 'spring-aop'
+        compile('org.springframework.integration:spring-integration-core:2.1.0.RELEASE') {
+            excludes 'spring-context', 'spring-aop', "xml-apis", "commons-digester"
         }
-        compile('org.springframework.integration:spring-integration-event:2.1.0.RC2') {
-            excludes 'spring-context'
+        compile('org.springframework.integration:spring-integration-event:2.1.0.RELEASE') {
+            excludes 'spring-context', "xml-apis", "commons-digester"
         }
         // runtime 'mysql:mysql-connector-java:5.1.5'
     }
 
     plugins {
         build(":tomcat:$grailsVersion",
-                ":release:1.0.0",
+                ":release:1.0.2-SNAPSHOT",
                 ":hibernate:$grailsVersion"
         ) {
             export = false
+        }
+        if (appName != 'events-si') {
+            compile ':platform-core:1.0.M1'
         }
 
     }

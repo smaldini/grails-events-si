@@ -1,8 +1,29 @@
+/* Copyright 2011-2012 the original author or authors:
+ *
+ *    Marc Palmer (marc@grailsrocks.com)
+ *    Stéphane Maldini (stephane.maldini@gmail.com)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package org.grails.plugin.platform.events.publisher;
 
+import groovy.lang.Closure;
 import org.apache.log4j.Logger;
-import org.grails.plugin.platform.events.Event;
+import org.grails.plugin.platform.events.EventObject;
+import org.grails.plugin.platform.events.EventReply;
 import org.grails.plugin.platform.events.registry.EventsRegistry;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.integration.Message;
 import org.springframework.integration.MessageDeliveryException;
 import org.springframework.integration.MessagingException;
 import org.springframework.integration.handler.ReplyRequiredException;
@@ -24,57 +45,80 @@ import java.util.concurrent.TimeoutException;
 public class SpringIntegrationEventsPublisher implements EventsPublisher {
 
     private final static Logger log = Logger.getLogger(SpringIntegrationEventsPublisher.class);
-
+    public static final String NULL_RESULT = "nullResult";
 
     private EventsPublisherGateway eventsPublisherGateway;
+    private TaskExecutor taskExecutor;
+
+    public void setTaskExecutor(TaskExecutor taskExecutor) {
+        this.taskExecutor = taskExecutor;
+    }
 
     public void setEventsPublisherGateway(EventsPublisherGateway eventsPublisherGateway) {
         this.eventsPublisherGateway = eventsPublisherGateway;
     }
 
-    public Object event(Event event) {
+    public EventReply event(final EventObject event) {
         try {
-            return eventsPublisherGateway.send(event, EventsRegistry.GRAILS_TOPIC_PREFIX + event.getEvent());
+            Message<?> res = eventsPublisherGateway.send(event.getData(), event, EventsRegistry.GRAILS_TOPIC_PREFIX + event.getEvent());
+            return new EventReply(res.getPayload(), res.getHeaders().getSequenceSize());
         } catch (MessagingException rre) {
             if (log.isDebugEnabled()) {
                 log.debug("Missing reply on event " + event.getEvent() + " from source " +
                         event.getSource() + " for one or more listeners - " + rre.getMessage());
             }
         }
-        return null;
+        return new EventReply(null, 0);
     }
 
-    public Future<Object> eventAsync(Event event) {
-        return new WrappedFuture(eventsPublisherGateway.sendAsync(event, EventsRegistry.GRAILS_TOPIC_PREFIX + event.getEvent()));
+    public EventReply eventAsync(final EventObject event) {
+        return new WrappedFuture(
+                eventsPublisherGateway.sendAsync(event.getData(), event, EventsRegistry.GRAILS_TOPIC_PREFIX + event.getEvent()),
+                -1
+        );
     }
 
-    public void eventAsync(Event event, Runnable onComplete) {
-        //To change body of implemented methods use File | Settings | File Templates.
+    public void eventAsync(final EventObject event, final Closure onComplete) {
+        taskExecutor.execute(new Runnable() {
+
+            public void run() {
+                Message<?> res =
+                        eventsPublisherGateway.send(event.getData(), event,
+                                EventsRegistry.GRAILS_TOPIC_PREFIX + event.getEvent());
+
+                onComplete.call(
+                        new EventReply(res.getPayload(),
+                                res.getHeaders().getSequenceSize()
+                        ));
+            }
+        });
     }
 
-    private static class WrappedFuture implements Future<Object> {
-
-        private Future<Object> eventReply;
-
-        public WrappedFuture(Future<Object> wrapped){
-            this.eventReply = wrapped;
+    public EventReply[] waitFor(EventReply... replies) throws ExecutionException, InterruptedException {
+        for (EventReply reply : replies) {
+            reply.get();
         }
-        
-        public boolean cancel(boolean b) {
-            return eventReply.cancel(b);
-        }
+        return replies;
+    }
 
-        public boolean isCancelled() {
-            return eventReply.isCancelled();
+    private static class WrappedFuture extends EventReply {
+
+        public WrappedFuture(Future<?> wrapped, int receivers) {
+            super(wrapped, receivers);
         }
 
-        public boolean isDone() {
-            return eventReply.isDone();
+        @Override
+        protected void initValues(Object val) {
+            Message<?> message = (Message<?>) val;
+            setReceivers(message.getHeaders().getSequenceSize());
+            super.initValues(message.getPayload());
         }
 
+        @Override
         public Object get() throws InterruptedException, ExecutionException {
             try {
-                return eventReply.get();
+                super.get();
+                return getValue();
             } catch (ExecutionException mde) {
                 if (mde.getCause() != null && (mde.getCause().getClass().equals(MessageDeliveryException.class) ||
                         mde.getCause().getClass().equals(ReplyRequiredException.class)))
@@ -84,9 +128,21 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
             }
         }
 
+        @Override
+        public int size() {
+            try {
+                get();
+            } catch (InterruptedException e) {
+            } catch (ExecutionException e) {
+            }
+            return super.size();
+        }
+
+        @Override
         public Object get(long l, TimeUnit timeUnit) throws InterruptedException, ExecutionException, TimeoutException {
             try {
-                return eventReply.get(l, timeUnit);
+                super.get(l, timeUnit);
+                return getValue();
             } catch (MessageDeliveryException mde) {
                 return null;
             }
