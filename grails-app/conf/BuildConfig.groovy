@@ -33,7 +33,7 @@ grails.project.dependency.resolution = {
             export = false
         }
         if (appName != 'events-si') {
-            compile ':platform-core:1.0.M1'
+            compile ':platform-core:1.0.M2-SNAPSHOT'
         }
 
     }
