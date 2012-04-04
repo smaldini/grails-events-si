@@ -18,13 +18,11 @@
 
 import org.grails.plugin.platform.events.EventObject
 import org.grails.plugin.platform.events.dispatcher.PersistentContextInterceptor
+import org.grails.plugin.platform.events.publisher.EventsPublisher
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway
 import org.grails.plugin.platform.events.publisher.SpringIntegrationEventsPublisher
 import org.grails.plugin.platform.events.publisher.SpringIntegrationRepliesAggregator
 import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistry
-import org.grails.plugin.platform.events.dispatcher.EventsDispatcher
-import org.grails.plugin.platform.events.EventObject
-import org.grails.plugin.platform.events.publisher.EventsPublisher
 
 class EventsSiGrailsPlugin {
     // the plugin version
@@ -32,7 +30,7 @@ class EventsSiGrailsPlugin {
     // the version or versions of Grails the plugin is designed for
     def grailsVersion = "2.0 > *"
     // the other plugins this plugin depends on
-    def dependsOn = ['platformCore':'0.1 > *']
+    //def dependsOn = ['platform-core']
     // resources that are excluded from plugin packaging
     def pluginExcludes = [
             "grails-app/**"
@@ -79,6 +77,7 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
         def gormCancelChannel = gormChannel + 'Cancel'
         //def grailsReplyChannel = "grailsReplyPipeline" //todo config
 
+
         /* Declare main grails pipeline and its router to reach listeners */
         channelPersistentContextInterceptor(PersistentContextInterceptor) {
             persistenceInterceptor = ref("persistenceInterceptor")
@@ -97,7 +96,7 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
         si.chain('input-channel': grailsChannel) {
             //si.transformer(expression: "payload.getData()")
             si.'header-value-router'('header-name': EventsPublisherGateway.TARGET_CHANNEL,
-                    //'ignore-send-failures': true,
+                    'ignore-send-failures': true,
                     'resolution-required': false,
                     'default-output-channel': "nullChannel"
             )
@@ -151,6 +150,15 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
         /* END GORM CONFIG */
 
+        /* Listeners config  */
+
+       /*Events.eachListener(application.serviceClasses*.clazz) {String listenerId, Method m, Class c ->
+            si.'publish-subscribe-channel'(id: EventsRegistry.GRAILS_TOPIC_PREFIX + listenerId, 'apply-sequence': true) {
+                si.interceptors {
+                    ref(bean: 'channelPersistentContextInterceptor')
+                }
+            }
+        }*/
 
     }
 

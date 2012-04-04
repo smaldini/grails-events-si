@@ -32,6 +32,8 @@ import org.springframework.integration.Message;
 import org.springframework.integration.MessageChannel;
 import org.springframework.integration.channel.ChannelInterceptor;
 import org.springframework.integration.channel.PublishSubscribeChannel;
+import org.springframework.integration.core.SubscribableChannel;
+import org.springframework.integration.handler.BridgeHandler;
 import org.springframework.integration.handler.ServiceActivatingHandler;
 import org.springframework.integration.support.channel.BeanFactoryChannelResolver;
 import org.springframework.util.ReflectionUtils;
@@ -69,29 +71,15 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         this.outputChannel = outputChannel;
     }
 
-    private PublishSubscribeChannel getOrCreateChannel(String topic) {
-        if (topic == null || topic.isEmpty()) {
-            throw new RuntimeException("topic name must not be null or empty");
-        }
+    private SubscribableChannel createChannel(String channelName) {
+        PublishSubscribeChannel _channel = new PublishSubscribeChannel();
+        _channel.setApplySequence(true);
+        _channel.setBeanName(channelName);
+        _channel.setBeanFactory(beanFactory);
+        _channel.addInterceptor(interceptor);
+        beanFactory.registerSingleton(channelName, _channel);
 
-        String channelName = GRAILS_TOPIC_PREFIX + topic;
-        PublishSubscribeChannel channel = null;
-
-        try {
-            channel = ctx.getBean(channelName, PublishSubscribeChannel.class);
-        } catch (BeansException be) {
-            log.debug("creating channel because " + be.getMessage());
-        }
-
-        if (channel == null) {
-            channel = new PublishSubscribeChannel();
-            channel.setApplySequence(true);
-            channel.setBeanName(channelName);
-            channel.setBeanFactory(beanFactory);
-            channel.addInterceptor(interceptor);
-            beanFactory.registerSingleton(channelName, channel);
-        }
-        return channel;
+        return _channel;
     }
 
     private String registerHandler(Object bean, Method callback, String topic) {
@@ -107,38 +95,62 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         }
 
         ListenerId listener = ListenerId.build(topic, target, callback);
-        String callBackId = listener.toString();
 
         ServiceActivatingHandler serviceActivatingHandler =
-                new GrailsServiceActivatingHandler(target, callback,listener);
+                new GrailsServiceActivatingHandler(target, callback, listener);
 
 
-        initServiceActivatingHandler(serviceActivatingHandler, callBackId, topic);
+        initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
 
-        return callBackId;
+        return listener.toString();
     }
 
     private String registerHandler(Closure callback, String topic) {
 
         ListenerId listener = ListenerId.build(topic, callback);
-        String callBackId = listener.toString();
 
         ServiceActivatingHandler serviceActivatingHandler =
                 new GrailsServiceActivatingHandler(callback, "call", listener);
 
-        initServiceActivatingHandler(serviceActivatingHandler, callBackId, topic);
+        initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
 
-        return callBackId;
+        return listener.toString();
     }
 
-    private void initServiceActivatingHandler(ServiceActivatingHandler serviceActivatingHandler, String callBackId, String topic) {
+    private void initServiceActivatingHandler(ServiceActivatingHandler serviceActivatingHandler, ListenerId listener, String topic) {
+        if (topic == null || topic.isEmpty()) {
+            throw new RuntimeException("topic name must not be null or empty");
+        }
+
+        String callBackId = listener.toString();
         serviceActivatingHandler.setBeanName(callBackId);
         serviceActivatingHandler.setChannelResolver(resolver);
         serviceActivatingHandler.setRequiresReply(true);
         serviceActivatingHandler.setOutputChannel(outputChannel);
         beanFactory.registerSingleton(callBackId, serviceActivatingHandler);
-        PublishSubscribeChannel channel = getOrCreateChannel(topic);
+
+        SubscribableChannel bridgeChannel = null;
+        String channelName = listener.getTopic();
+
+        try {
+            bridgeChannel = ctx.getBean(channelName, SubscribableChannel.class);
+        } catch (BeansException be) {
+            log.debug("no overriding channel found " + be.getMessage());
+        }
+
+        if (bridgeChannel != null) {
+            channelName += "-plugin";
+        }
+
+        SubscribableChannel channel = createChannel(channelName);
         channel.subscribe(serviceActivatingHandler);
+
+        if (bridgeChannel != null) {
+            BridgeHandler bridgeHandler = new BridgeHandler();
+            bridgeHandler.setOutputChannel(channel);
+            bridgeChannel.subscribe(bridgeHandler);
+        }
+
     }
 
     public String addListener(String topic, Closure callback) {
@@ -157,7 +169,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         ListenerId listener = ListenerId.parse(callbackId);
 
         List<GrailsServiceActivatingHandler> targetListeners = new ArrayList<GrailsServiceActivatingHandler>();
-        if(listener == null)
+        if (listener == null)
             return targetListeners;
 
         Map<String, GrailsServiceActivatingHandler> grailsListeners = ctx.getBeansOfType(GrailsServiceActivatingHandler.class);
