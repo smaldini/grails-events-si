@@ -17,8 +17,8 @@
  */
 package org.grails.plugin.platform.events.dispatcher;
 
-import org.apache.log4j.Logger;
 import org.grails.plugin.platform.events.publisher.TrackableNullResult;
+import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistry;
 import org.springframework.integration.Message;
 import org.springframework.integration.MessageChannel;
 import org.springframework.integration.channel.ChannelInterceptor;
@@ -36,11 +36,11 @@ import org.springframework.integration.message.GenericMessage;
  */
 public class NullReplyInterceptor implements ChannelInterceptor {
 
-    static final private Logger log = Logger.getLogger(NullReplyInterceptor.class);
-
 
     public Message<?> preSend(Message<?> message, MessageChannel messageChannel) {
-        ((PollableChannel)message.getHeaders().getReplyChannel()).send(new GenericMessage<TrackableNullResult>(new TrackableNullResult()));
+        if (message.getHeaders().get(SpringIntegrationEventsRegistry.GORM_EVENT_KEY) == null) {
+            ((PollableChannel) message.getHeaders().getReplyChannel()).send(new GenericMessage<TrackableNullResult>(new TrackableNullResult()));
+        }
         return message;
     }
 
