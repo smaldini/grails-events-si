@@ -72,7 +72,15 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     }
 
     private SubscribableChannel createChannel(String channelName) {
-        PublishSubscribeChannel _channel = new PublishSubscribeChannel();
+        GrailsPublishSubscribeChannel _channel;
+        try {
+            _channel = ctx.getBean(channelName, GrailsPublishSubscribeChannel.class);
+            return _channel;
+        } catch (BeansException be) {
+            log.debug("no overriding/existing channel found " + be.getMessage());
+        }
+
+        _channel = new GrailsPublishSubscribeChannel();
         _channel.setApplySequence(true);
         _channel.setBeanName(channelName);
         _channel.setBeanFactory(beanFactory);
@@ -130,22 +138,28 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         beanFactory.registerSingleton(callBackId, serviceActivatingHandler);
 
         SubscribableChannel bridgeChannel = null;
+        SubscribableChannel channel = null;
         String channelName = listener.getTopic();
+
 
         try {
             bridgeChannel = ctx.getBean(channelName, SubscribableChannel.class);
         } catch (BeansException be) {
-            log.debug("no overriding channel found " + be.getMessage());
+            log.debug("no overriding/existing channel found " + be.getMessage());
         }
 
-        if (bridgeChannel != null) {
-            channelName += "-plugin";
+        if (bridgeChannel == null || !bridgeChannel.getClass().isAssignableFrom(GrailsPublishSubscribeChannel.class)) {
+            if (bridgeChannel != null) {
+                channelName += "-plugin";
+            }
+            channel = createChannel(channelName);
+        } else {
+            channel = bridgeChannel;
         }
 
-        SubscribableChannel channel = createChannel(channelName);
         channel.subscribe(serviceActivatingHandler);
 
-        if (bridgeChannel != null) {
+        if (bridgeChannel != null && !bridgeChannel.getClass().isAssignableFrom(GrailsPublishSubscribeChannel.class)) {
             BridgeHandler bridgeHandler = new BridgeHandler();
             bridgeHandler.setOutputChannel(channel);
             bridgeChannel.subscribe(bridgeHandler);
@@ -214,6 +228,9 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
         this.beanFactory = (ConfigurableBeanFactory) beanFactory;
         this.resolver = new BeanFactoryChannelResolver(beanFactory);
+    }
+
+    private static class GrailsPublishSubscribeChannel extends PublishSubscribeChannel {
     }
 
     private class GrailsServiceActivatingHandler extends ServiceActivatingHandler implements EventHandler {

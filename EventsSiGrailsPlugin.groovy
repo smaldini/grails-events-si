@@ -17,6 +17,7 @@
  */
 
 import org.grails.plugin.platform.events.EventObject
+import org.grails.plugin.platform.events.dispatcher.NullReplyInterceptor
 import org.grails.plugin.platform.events.dispatcher.PersistentContextInterceptor
 import org.grails.plugin.platform.events.publisher.EventsPublisher
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway
@@ -77,6 +78,7 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
         def gormCancelChannel = gormChannel + 'Cancel'
         //def grailsReplyChannel = "grailsReplyPipeline" //todo config
 
+        channelNullReplyInterceptor(NullReplyInterceptor)
 
         /* Declare main grails pipeline and its router to reach listeners */
         channelPersistentContextInterceptor(PersistentContextInterceptor) {
@@ -86,12 +88,17 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
         grailsTopicAggregator(SpringIntegrationRepliesAggregator)
 
-        si.channel(id: grailsChannel)
+        si.channel(id: grailsChannel) {
+            si.interceptors {
+                ref(bean: 'channelNullReplyInterceptor')
+            }
+        }
         si.channel(id: grailsReplyChannel)
 
-        si.aggregator(ref: 'grailsTopicAggregator', 'input-channel': grailsReplyChannel)
-
-        //si.'channel'(id: grailsReplyChannel )
+        si.chain('input-channel': grailsReplyChannel) {
+            si.filter(expression: 'headers.replyChannel != null')
+            si.aggregator(ref: 'grailsTopicAggregator')
+        }
 
         si.chain('input-channel': grailsChannel) {
             //si.transformer(expression: "payload.getData()")
@@ -152,7 +159,7 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
         /* Listeners config  */
 
-       /*Events.eachListener(application.serviceClasses*.clazz) {String listenerId, Method m, Class c ->
+        /*Events.eachListener(application.serviceClasses*.clazz) {String listenerId, Method m, Class c ->
             si.'publish-subscribe-channel'(id: EventsRegistry.GRAILS_TOPIC_PREFIX + listenerId, 'apply-sequence': true) {
                 si.interceptors {
                     ref(bean: 'channelPersistentContextInterceptor')
