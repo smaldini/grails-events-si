@@ -19,7 +19,8 @@ package org.grails.plugin.platform.events.dispatcher;
 
 import org.apache.log4j.Logger;
 import org.codehaus.groovy.grails.support.PersistenceContextInterceptor;
-import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistry;
+import org.grails.plugin.platform.events.EventObject;
+import org.grails.plugin.platform.events.publisher.EventsPublisherGateway;
 import org.springframework.integration.Message;
 import org.springframework.integration.MessageChannel;
 import org.springframework.integration.channel.ChannelInterceptor;
@@ -49,7 +50,8 @@ public class PersistentContextInterceptor implements ChannelInterceptor {
     }
 
     public Message<?> preSend(Message<?> message, MessageChannel messageChannel) {
-        if (message.getHeaders().get(SpringIntegrationEventsRegistry.GORM_EVENT_KEY) == null) {
+        EventObject event = (EventObject)message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
+        if (event.isGormSession()) {
             persistenceInterceptor.init();
             log.debug("intercepting");
         }
@@ -58,7 +60,8 @@ public class PersistentContextInterceptor implements ChannelInterceptor {
     }
 
     public void postSend(Message<?> message, MessageChannel messageChannel, boolean b) {
-        if (message.getHeaders().get(SpringIntegrationEventsRegistry.GORM_EVENT_KEY) == null) {
+        EventObject event = (EventObject)message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
+        if (event.isGormSession()) {
             try {
                 persistenceInterceptor.flush();
                 log.debug("flushed");

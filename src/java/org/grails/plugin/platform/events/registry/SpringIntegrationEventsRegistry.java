@@ -19,7 +19,9 @@ package org.grails.plugin.platform.events.registry;
 
 import groovy.lang.Closure;
 import org.apache.log4j.Logger;
+import org.grails.plugin.platform.events.EventObject;
 import org.grails.plugin.platform.events.ListenerId;
+import org.grails.plugin.platform.events.publisher.EventsPublisherGateway;
 import org.grails.plugin.platform.events.publisher.TrackableNullResult;
 import org.springframework.aop.framework.Advised;
 import org.springframework.beans.BeansException;
@@ -90,7 +92,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return _channel;
     }
 
-    private String registerHandler(Object bean, Method callback, String topic) {
+    private String registerHandler(Object bean, Method callback, String scope, String topic) {
         Object target = bean;
 
         //todo expose param to let the listener traversing proxies (like tx)
@@ -102,7 +104,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
             }
         }
 
-        ListenerId listener = ListenerId.build(topic, target, callback);
+        ListenerId listener = ListenerId.build(scope, topic, target, callback);
 
         ServiceActivatingHandler serviceActivatingHandler =
                 new GrailsServiceActivatingHandler(target, callback, listener);
@@ -113,9 +115,9 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return listener.toString();
     }
 
-    private String registerHandler(Closure callback, String topic) {
+    private String registerHandler(Closure callback, String scope, String topic) {
 
-        ListenerId listener = ListenerId.build(topic, callback);
+        ListenerId listener = ListenerId.build(scope, topic, callback);
 
         ServiceActivatingHandler serviceActivatingHandler =
                 new GrailsServiceActivatingHandler(callback, "call", listener);
@@ -167,16 +169,16 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
     }
 
-    public String addListener(String topic, Closure callback) {
-        return registerHandler(callback, topic);
+    public String addListener(String scope, String topic, Closure callback) {
+        return registerHandler(callback, scope, topic);
     }
 
-    public String addListener(String topic, Object bean, String callbackName) {
-        return registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName), topic);
+    public String addListener(String scope, String topic, Object bean, String callbackName) {
+        return registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName), scope, topic);
     }
 
-    public String addListener(String topic, Object bean, Method callback) {
-        return registerHandler(bean, callback, topic);
+    public String addListener(String scope, String topic, Object bean, Method callback) {
+        return registerHandler(bean, callback, scope, topic);
     }
 
     private List<GrailsServiceActivatingHandler> findAllListenersFor(String callbackId) {
@@ -208,10 +210,8 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         int removed = 0;
         for (Map.Entry<String, PublishSubscribeChannel> entry : channels.entrySet()) {
-            if (entry.getKey().startsWith(GRAILS_TOPIC_PREFIX)) {
-                for (GrailsServiceActivatingHandler _listener : targetListeners) {
-                    if (entry.getValue().unsubscribe(_listener)) removed++;
-                }
+            for (GrailsServiceActivatingHandler _listener : targetListeners) {
+                if (entry.getValue().unsubscribe(_listener)) removed++;
             }
         }
         return removed;
@@ -250,7 +250,10 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         @Override
         protected Object handleRequestMessage(Message<?> message) {
-            Object res = super.handleRequestMessage(message);
+            EventObject eventObject = (EventObject) message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
+            Object res = null;
+            if (eventObject.getScope().equalsIgnoreCase(listenerId.getScope()))
+                res = super.handleRequestMessage(message);
             if (res == null) {
                 //Return TRUE if GORM event to bypass cancel
                 //Else return FALSE for other events (never returning true)

@@ -21,7 +21,6 @@ import groovy.lang.Closure;
 import org.apache.log4j.Logger;
 import org.grails.plugin.platform.events.EventObject;
 import org.grails.plugin.platform.events.EventReply;
-import org.grails.plugin.platform.events.registry.EventsRegistry;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.integration.Message;
 import org.springframework.integration.MessageDeliveryException;
@@ -60,12 +59,12 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
 
     public EventReply event(final EventObject event) {
         try {
-            Message<?> res = eventsPublisherGateway.send(event.getData(), event, EventsRegistry.GRAILS_TOPIC_PREFIX + event.getEvent());
+            Message<?> res = eventsPublisherGateway.send(event.getData(), event, event.getEvent());
             return new EventReply(res.getPayload(), res.getHeaders().getSequenceSize());
         } catch (MessagingException rre) {
             if (log.isDebugEnabled()) {
-                log.debug("Missing reply on event " + event.getEvent() + " from source " +
-                        event.getSource() + " for one or more listeners - " + rre.getMessage());
+                log.debug("Missing reply on event " + event.getEvent() + " for scope " +
+                        event.getScope() + " for one or more listeners - " + rre.getMessage());
             }
         }
         return new EventReply(null, 0);
@@ -73,7 +72,7 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
 
     public EventReply eventAsync(final EventObject event) {
         return new WrappedFuture(
-                eventsPublisherGateway.sendAsync(event.getData(), event, EventsRegistry.GRAILS_TOPIC_PREFIX + event.getEvent()),
+                eventsPublisherGateway.sendAsync(event.getData(), event, event.getEvent()),
                 -1
         );
     }
@@ -84,7 +83,7 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
             public void run() {
                 Message<?> res =
                         eventsPublisherGateway.send(event.getData(), event,
-                                EventsRegistry.GRAILS_TOPIC_PREFIX + event.getEvent());
+                                event.getEvent());
 
                 onComplete.call(
                         new EventReply(res.getPayload(),
