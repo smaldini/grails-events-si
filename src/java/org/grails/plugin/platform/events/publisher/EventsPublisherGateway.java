@@ -17,7 +17,7 @@
  */
 package org.grails.plugin.platform.events.publisher;
 
-import org.grails.plugin.platform.events.EventObject;
+import org.grails.plugin.platform.events.EventMessage;
 import org.springframework.integration.Message;
 import org.springframework.integration.annotation.Header;
 
@@ -37,7 +37,7 @@ public interface EventsPublisherGateway {
     public static final String TARGET_CHANNEL = "targetChannel";
     public static final String EVENT_OBJECT_KEY = "EVENT_OBJECT_KEY";
 
-    public Message<?> send(Object data, @Header(EVENT_OBJECT_KEY) EventObject event, @Header(TARGET_CHANNEL) String targetChannel);
+    public Message<?> send(Object data, @Header(EVENT_OBJECT_KEY) EventMessage event, @Header(TARGET_CHANNEL) String targetChannel);
 
-    public Future<Message<?>> sendAsync(Object data, @Header(EVENT_OBJECT_KEY) EventObject event, @Header(TARGET_CHANNEL) String targetChannel);
+    public Future<Message<?>> sendAsync(Object data, @Header(EVENT_OBJECT_KEY) EventMessage event, @Header(TARGET_CHANNEL) String targetChannel);
 }

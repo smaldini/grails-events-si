@@ -19,7 +19,7 @@ package org.grails.plugin.platform.events.registry;
 
 import groovy.lang.Closure;
 import org.apache.log4j.Logger;
-import org.grails.plugin.platform.events.EventObject;
+import org.grails.plugin.platform.events.EventMessage;
 import org.grails.plugin.platform.events.ListenerId;
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway;
 import org.grails.plugin.platform.events.publisher.TrackableNullResult;
@@ -250,7 +250,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         @Override
         protected Object handleRequestMessage(Message<?> message) {
-            EventObject eventObject = (EventObject) message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
+            EventMessage eventObject = (EventMessage) message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
             Object res = null;
             if (eventObject.getScope().equalsIgnoreCase(listenerId.getScope()))
                 res = super.handleRequestMessage(message);

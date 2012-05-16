@@ -16,7 +16,7 @@
  * limitations under the License.
  */
 
-import org.grails.plugin.platform.events.EventObject
+import org.grails.plugin.platform.events.EventMessage
 import org.grails.plugin.platform.events.dispatcher.NullReplyInterceptor
 import org.grails.plugin.platform.events.dispatcher.PersistentContextInterceptor
 import org.grails.plugin.platform.events.publisher.EventsPublisher
@@ -24,6 +24,7 @@ import org.grails.plugin.platform.events.publisher.EventsPublisherGateway
 import org.grails.plugin.platform.events.publisher.SpringIntegrationEventsPublisher
 import org.grails.plugin.platform.events.publisher.SpringIntegrationRepliesAggregator
 import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistry
+import org.grails.plugin.platform.events.EventMessage
 
 class EventsSiGrailsPlugin {
     // the plugin version
@@ -150,7 +151,7 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
                 si.'reply-channel'(ref: gormCancelChannel)
             }
             si.transformer(expression:
-                    "new ${EventObject.class.name}(headers.get('$EventsPublisherGateway.TARGET_CHANNEL'), payload.getEntityObject(), '$EventsPublisher.GORM_EVENT_SOURCE')")
+                    "new ${EventMessage.class.name}(headers.get('$EventsPublisherGateway.TARGET_CHANNEL'), payload.getEntityObject(), '$EventsPublisher.GORM_EVENT_SOURCE')")
         }
 
         siEvent.'inbound-channel-adapter'(channel: gormChannel, 'event-types': "org.grails.datastore.mapping.engine.event.AbstractPersistenceEvent")

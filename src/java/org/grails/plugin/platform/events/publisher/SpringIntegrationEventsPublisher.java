@@ -19,7 +19,7 @@ package org.grails.plugin.platform.events.publisher;
 
 import groovy.lang.Closure;
 import org.apache.log4j.Logger;
-import org.grails.plugin.platform.events.EventObject;
+import org.grails.plugin.platform.events.EventMessage;
 import org.grails.plugin.platform.events.EventReply;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.integration.Message;
@@ -57,7 +57,7 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         this.eventsPublisherGateway = eventsPublisherGateway;
     }
 
-    public EventReply event(final EventObject event) {
+    public EventReply event(final EventMessage event) {
         try {
             Message<?> res = eventsPublisherGateway.send(event.getData(), event, event.getEvent());
             return new EventReply(res.getPayload(), res.getHeaders().getSequenceSize());
@@ -70,14 +70,14 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         return new EventReply(null, 0);
     }
 
-    public EventReply eventAsync(final EventObject event) {
+    public EventReply eventAsync(final EventMessage event) {
         return new WrappedFuture(
                 eventsPublisherGateway.sendAsync(event.getData(), event, event.getEvent()),
                 -1
         );
     }
 
-    public void eventAsync(final EventObject event, final Closure onComplete) {
+    public void eventAsync(final EventMessage event, final Closure onComplete) {
         taskExecutor.execute(new Runnable() {
 
             public void run() {
