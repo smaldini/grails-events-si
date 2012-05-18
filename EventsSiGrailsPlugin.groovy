@@ -89,16 +89,10 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
         grailsTopicAggregator(SpringIntegrationRepliesAggregator)
 
-        si.channel(id: grailsChannel) {
+        si.'publish-subscribe-channel'(id: grailsChannel) {
             si.interceptors {
                 ref(bean: 'channelNullReplyInterceptor')
             }
-        }
-        si.channel(id: grailsReplyChannel)
-
-        si.chain('input-channel': grailsReplyChannel) {
-            si.filter(expression: 'headers.replyChannel != null')
-            si.aggregator(ref: 'grailsTopicAggregator')
         }
 
         si.chain('input-channel': grailsChannel) {
@@ -109,6 +103,14 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
                     'default-output-channel': "nullChannel"
             )
         }
+
+        si.channel(id: grailsReplyChannel)
+
+             si.chain('input-channel': grailsReplyChannel) {
+                 si.filter(expression: 'headers.replyChannel != null')
+                 si.aggregator(ref: 'grailsTopicAggregator')
+             }
+
 
         si.gateway(
                 id: 'eventsPublisherGateway',

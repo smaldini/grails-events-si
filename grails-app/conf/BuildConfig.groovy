@@ -16,10 +16,10 @@ grails.project.dependency.resolution = {
         grailsCentral()
     }
     dependencies {
-        compile('org.springframework.integration:spring-integration-core:2.1.0.RELEASE') {
+        compile('org.springframework.integration:spring-integration-core:2.1.1.RELEASE') {
             excludes 'spring-context', 'spring-aop', "xml-apis", "commons-digester"
         }
-        compile('org.springframework.integration:spring-integration-event:2.1.0.RELEASE') {
+        compile('org.springframework.integration:spring-integration-event:2.1.1.RELEASE') {
             excludes 'spring-context', "xml-apis", "commons-digester"
         }
         // runtime 'mysql:mysql-connector-java:5.1.5'
