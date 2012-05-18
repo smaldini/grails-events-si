@@ -37,6 +37,7 @@ import org.springframework.integration.channel.PublishSubscribeChannel;
 import org.springframework.integration.core.SubscribableChannel;
 import org.springframework.integration.handler.BridgeHandler;
 import org.springframework.integration.handler.ServiceActivatingHandler;
+import org.springframework.integration.support.MessageBuilder;
 import org.springframework.integration.support.channel.BeanFactoryChannelResolver;
 import org.springframework.util.ReflectionUtils;
 
@@ -236,6 +237,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     private class GrailsServiceActivatingHandler extends ServiceActivatingHandler implements EventHandler {
 
         private ListenerId listenerId;
+        private boolean useEventMessage = false;
 
         public GrailsServiceActivatingHandler(Object object, String methodName, ListenerId listenerId) {
             super(object, methodName);
@@ -244,6 +246,10 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         public GrailsServiceActivatingHandler(Object object, Method method, ListenerId listenerId) {
             super(object, method);
+            if (method.getParameterTypes().length > 0) {
+                Class<?> type = method.getParameterTypes()[0];
+                useEventMessage = type.isAssignableFrom(EventMessage.class);
+            }
             this.listenerId = listenerId;
         }
 
@@ -252,8 +258,13 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         protected Object handleRequestMessage(Message<?> message) {
             EventMessage eventObject = (EventMessage) message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
             Object res = null;
-            if (eventObject.getScope().equalsIgnoreCase(listenerId.getScope()))
-                res = super.handleRequestMessage(message);
+            if (eventObject.getScope().equalsIgnoreCase(listenerId.getScope())){
+                Message<?> _message = useEventMessage ?
+                                                MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
+                                                message;
+
+                res = super.handleRequestMessage(_message);
+            }
             if (res == null) {
                 //Return TRUE if GORM event to bypass cancel
                 //Else return FALSE for other events (never returning true)
@@ -262,8 +273,14 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
             return res;
         }
 
+        public boolean isUseEventMessage() {
+            return useEventMessage;
+        }
+
         public ListenerId getListenerId() {
             return listenerId;
         }
+
+
     }
 }
