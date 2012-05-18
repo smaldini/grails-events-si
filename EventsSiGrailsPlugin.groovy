@@ -24,7 +24,6 @@ import org.grails.plugin.platform.events.publisher.EventsPublisherGateway
 import org.grails.plugin.platform.events.publisher.SpringIntegrationEventsPublisher
 import org.grails.plugin.platform.events.publisher.SpringIntegrationRepliesAggregator
 import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistry
-import org.grails.plugin.platform.events.EventMessage
 
 class EventsSiGrailsPlugin {
     // the plugin version
@@ -95,21 +94,19 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
             }
         }
 
-        si.chain('input-channel': grailsChannel) {
-            //si.transformer(expression: "payload.getData()")
-            si.'header-value-router'('header-name': EventsPublisherGateway.TARGET_CHANNEL,
-                    'ignore-send-failures': true,
-                    'resolution-required': false,
-                    'default-output-channel': "nullChannel"
-            )
-        }
+        //si.transformer(expression: "payload.getData()")
+        si.'header-value-router'(id:'grailsRouter', 'input-channel': grailsChannel, 'header-name': EventsPublisherGateway.TARGET_CHANNEL,
+                'ignore-send-failures': true,
+                'resolution-required': false,
+                'default-output-channel': "nullChannel"
+        )
 
         si.channel(id: grailsReplyChannel)
 
-             si.chain('input-channel': grailsReplyChannel) {
-                 si.filter(expression: 'headers.replyChannel != null')
-                 si.aggregator(ref: 'grailsTopicAggregator')
-             }
+        si.chain('input-channel': grailsReplyChannel) {
+            si.filter(expression: 'headers.replyChannel != null')
+            si.aggregator(ref: 'grailsTopicAggregator')
+        }
 
 
         si.gateway(
@@ -138,10 +135,8 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
         /* plug GORM events */
         si.channel(id: gormCancelChannel)
-        si.chain('input-channel': gormCancelChannel) {
-            si.'service-activator'(expression: "@gormTopicSupport.processCancel(headers."
-                    + "get('$SpringIntegrationEventsRegistry.GORM_EVENT_KEY'), payload)")
-        }
+        si.'service-activator'('input-channel': gormCancelChannel, expression: "@gormTopicSupport.processCancel(headers."
+                + "get('$SpringIntegrationEventsRegistry.GORM_EVENT_KEY'), payload)")
 
 
         si.channel(id: gormChannel)
