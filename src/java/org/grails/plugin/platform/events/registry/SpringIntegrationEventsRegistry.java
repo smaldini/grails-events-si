@@ -248,7 +248,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
             super(object, method);
             if (method.getParameterTypes().length > 0) {
                 Class<?> type = method.getParameterTypes()[0];
-                useEventMessage = type.isAssignableFrom(EventMessage.class);
+                useEventMessage = EventMessage.class.isAssignableFrom(type);
             }
             this.listenerId = listenerId;
         }
