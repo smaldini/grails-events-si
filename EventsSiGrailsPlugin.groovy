@@ -103,7 +103,7 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
         si.channel(id: grailsReplyChannel)
 
-        si.chain('input-channel': grailsReplyChannel) {
+        si.chain(id:'grailsReplyChainHandler', 'input-channel': grailsReplyChannel) {
             si.filter(expression: 'headers.replyChannel != null')
             si.aggregator(ref: 'grailsTopicAggregator')
         }
@@ -140,7 +140,7 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
 
         si.channel(id: gormChannel)
-        si.chain('input-channel': gormChannel, 'output-channel': grailsChannel) {
+        si.chain(id:'gormChainHandler','input-channel': gormChannel, 'output-channel': grailsChannel) {
             si.filter(expression: "payload.getEntityObject() != null")
             si.'header-enricher' {
                 si.header(name: EventsPublisherGateway.TARGET_CHANNEL, ref: 'gormTopicSupport', method: 'convertTopic')
