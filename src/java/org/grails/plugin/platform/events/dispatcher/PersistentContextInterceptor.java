@@ -51,7 +51,7 @@ public class PersistentContextInterceptor implements ChannelInterceptor {
 
     public Message<?> preSend(Message<?> message, MessageChannel messageChannel) {
         EventMessage event = (EventMessage)message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
-        if (event.isGormSession()) {
+        if (event != null && event.isGormSession()) {
             persistenceInterceptor.init();
             log.debug("intercepting");
         }

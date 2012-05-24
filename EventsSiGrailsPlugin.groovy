@@ -17,9 +17,9 @@
  */
 
 import org.grails.plugin.platform.events.EventMessage
+import org.grails.plugin.platform.events.dispatcher.GormTopicSupport
 import org.grails.plugin.platform.events.dispatcher.NullReplyInterceptor
 import org.grails.plugin.platform.events.dispatcher.PersistentContextInterceptor
-import org.grails.plugin.platform.events.publisher.EventsPublisher
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway
 import org.grails.plugin.platform.events.publisher.SpringIntegrationEventsPublisher
 import org.grails.plugin.platform.events.publisher.SpringIntegrationRepliesAggregator
@@ -95,15 +95,15 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
         }
 
         //si.transformer(expression: "payload.getData()")
-        si.'header-value-router'(id:'grailsRouter', 'input-channel': grailsChannel, 'header-name': EventsPublisherGateway.TARGET_CHANNEL,
-                'ignore-send-failures': true,
+        si.'header-value-router'(id: 'grailsRouter', 'input-channel': grailsChannel, 'header-name': EventsPublisherGateway.TARGET_CHANNEL,
+                //'ignore-send-failures': true,
                 'resolution-required': false,
                 'default-output-channel': "nullChannel"
         )
 
         si.channel(id: grailsReplyChannel)
 
-        si.chain(id:'grailsReplyChainHandler', 'input-channel': grailsReplyChannel) {
+        si.chain(id: 'grailsReplyChainHandler', 'input-channel': grailsReplyChannel) {
             si.filter(expression: 'headers.replyChannel != null')
             si.aggregator(ref: 'grailsTopicAggregator')
         }
@@ -140,15 +140,17 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
 
         si.channel(id: gormChannel)
-        si.chain(id:'gormChainHandler','input-channel': gormChannel, 'output-channel': grailsChannel) {
+        si.chain('input-channel': gormChannel, 'output-channel': grailsChannel) {
             si.filter(expression: "payload.getEntityObject() != null")
             si.'header-enricher' {
                 si.header(name: EventsPublisherGateway.TARGET_CHANNEL, ref: 'gormTopicSupport', method: 'convertTopic')
                 si.header(name: SpringIntegrationEventsRegistry.GORM_EVENT_KEY, expression: 'payload')
+                si.header(name: EventsPublisherGateway.EVENT_OBJECT_KEY , expression:"new ${EventMessage.class.name}(headers.get('$EventsPublisherGateway.TARGET_CHANNEL'), payload.getEntityObject(), '$GormTopicSupport.GORM_SOURCE')")
                 si.'reply-channel'(ref: gormCancelChannel)
             }
-            si.transformer(expression:
-                    "new ${EventMessage.class.name}(headers.get('$EventsPublisherGateway.TARGET_CHANNEL'), payload.getEntityObject(), '$EventsPublisher.GORM_EVENT_SOURCE')")
+            si.transformer(expression:"headers['$EventsPublisherGateway.EVENT_OBJECT_KEY'].data")
+
+
         }
 
         siEvent.'inbound-channel-adapter'(channel: gormChannel, 'event-types': "org.grails.datastore.mapping.engine.event.AbstractPersistenceEvent")

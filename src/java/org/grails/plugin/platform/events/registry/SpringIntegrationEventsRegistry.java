@@ -138,7 +138,8 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         serviceActivatingHandler.setChannelResolver(resolver);
         serviceActivatingHandler.setRequiresReply(true);
         serviceActivatingHandler.setOutputChannel(outputChannel);
-        beanFactory.registerSingleton(callBackId, serviceActivatingHandler);
+        beanFactory.registerSingleton(callBackId.replaceFirst("\\*","_all"), serviceActivatingHandler);
+        serviceActivatingHandler.afterPropertiesSet();
 
         SubscribableChannel bridgeChannel = null;
         SubscribableChannel channel = null;
@@ -258,7 +259,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         protected Object handleRequestMessage(Message<?> message) {
             EventMessage eventObject = (EventMessage) message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
             Object res = null;
-            if (eventObject.getScope().equalsIgnoreCase(listenerId.getScope())){
+            if (listenerId.getScope() == null || listenerId.getScope().equals(ListenerId.SCOPE_WILDCARD) ||eventObject.getScope().equalsIgnoreCase(listenerId.getScope())){
                 Message<?> _message = useEventMessage ?
                                                 MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
                                                 message;
