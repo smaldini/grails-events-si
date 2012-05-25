@@ -17,8 +17,9 @@
  */
 package org.grails.plugin.platform.events.dispatcher;
 
+import org.grails.plugin.platform.events.EventMessage;
+import org.grails.plugin.platform.events.publisher.EventsPublisherGateway;
 import org.grails.plugin.platform.events.publisher.TrackableNullResult;
-import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistry;
 import org.springframework.integration.Message;
 import org.springframework.integration.MessageChannel;
 import org.springframework.integration.channel.ChannelInterceptor;
@@ -38,7 +39,8 @@ public class NullReplyInterceptor implements ChannelInterceptor {
 
 
     public Message<?> preSend(Message<?> message, MessageChannel messageChannel) {
-        if (message.getHeaders().get(SpringIntegrationEventsRegistry.GORM_EVENT_KEY) == null) {
+        EventMessage evt = (EventMessage)message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
+        if (evt != null) {
             ((PollableChannel) message.getHeaders().getReplyChannel()).send(new GenericMessage<TrackableNullResult>(new TrackableNullResult()));
         }
         return message;

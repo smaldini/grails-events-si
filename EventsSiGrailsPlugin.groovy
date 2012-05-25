@@ -16,8 +16,6 @@
  * limitations under the License.
  */
 
-import org.grails.plugin.platform.events.EventMessage
-import org.grails.plugin.platform.events.dispatcher.GormTopicSupport
 import org.grails.plugin.platform.events.dispatcher.NullReplyInterceptor
 import org.grails.plugin.platform.events.dispatcher.PersistentContextInterceptor
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway
@@ -70,12 +68,10 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
     def doWithSpring = {
         xmlns si: 'http://www.springframework.org/schema/integration'
-        xmlns siEvent: "http://www.springframework.org/schema/integration/event"
 
         def grailsChannel = "grailsPipeline" //todo config
         def grailsReplyChannel = grailsChannel + 'Reply' //todo config
         def gormChannel = "grailsGormPipeline" //todo config
-        def gormCancelChannel = gormChannel + 'Cancel'
         //def grailsReplyChannel = "grailsReplyPipeline" //todo config
 
         channelNullReplyInterceptor(NullReplyInterceptor)
@@ -96,7 +92,7 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
         //si.transformer(expression: "payload.getData()")
         si.'header-value-router'(id: 'grailsRouter', 'input-channel': grailsChannel, 'header-name': EventsPublisherGateway.TARGET_CHANNEL,
-                //'ignore-send-failures': true,
+                'ignore-send-failures': true,
                 'resolution-required': false,
                 'default-output-channel': "nullChannel"
         )
@@ -119,10 +115,11 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
             si.method(name: 'send', requestChannel: grailsChannel)
         }
 
-
         grailsEventsPublisher(SpringIntegrationEventsPublisher) {
             eventsPublisherGateway = ref('eventsPublisherGateway')
             taskExecutor = ref('grailsTopicExecutor')
+            gormTopicSupport = ref("gormTopicSupport")
+
         }
         grailsEventsRegistry(SpringIntegrationEventsRegistry) {
             outputChannel = ref(grailsReplyChannel)
@@ -132,30 +129,6 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
         //si.'aggregator'(id:'multipleListenersAggregator', 'input-channel': grailsReplyChannel)
 
         /* END GENERAL */
-
-        /* plug GORM events */
-        si.channel(id: gormCancelChannel)
-        si.'service-activator'('input-channel': gormCancelChannel, expression: "@gormTopicSupport.processCancel(headers."
-                + "get('$SpringIntegrationEventsRegistry.GORM_EVENT_KEY'), payload)")
-
-
-        si.channel(id: gormChannel)
-        si.chain('input-channel': gormChannel, 'output-channel': grailsChannel) {
-            si.filter(expression: "payload.getEntityObject() != null")
-            si.'header-enricher' {
-                si.header(name: EventsPublisherGateway.TARGET_CHANNEL, ref: 'gormTopicSupport', method: 'convertTopic')
-                si.header(name: SpringIntegrationEventsRegistry.GORM_EVENT_KEY, expression: 'payload')
-                si.header(name: EventsPublisherGateway.EVENT_OBJECT_KEY , expression:"new ${EventMessage.class.name}(headers.get('$EventsPublisherGateway.TARGET_CHANNEL'), payload.getEntityObject(), '$GormTopicSupport.GORM_SOURCE')")
-                si.'reply-channel'(ref: gormCancelChannel)
-            }
-            si.transformer(expression:"headers['$EventsPublisherGateway.EVENT_OBJECT_KEY'].data")
-
-
-        }
-
-        siEvent.'inbound-channel-adapter'(channel: gormChannel, 'event-types': "org.grails.datastore.mapping.engine.event.AbstractPersistenceEvent")
-
-        /* END GORM CONFIG */
 
         /* Listeners config  */
 

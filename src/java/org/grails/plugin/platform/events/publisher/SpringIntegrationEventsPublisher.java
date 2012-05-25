@@ -21,7 +21,6 @@ import groovy.lang.Closure;
 import org.apache.log4j.Logger;
 import org.grails.plugin.platform.events.EventMessage;
 import org.grails.plugin.platform.events.EventReply;
-import org.springframework.core.task.TaskExecutor;
 import org.springframework.integration.Message;
 import org.springframework.integration.MessageDeliveryException;
 import org.springframework.integration.MessagingException;
@@ -41,22 +40,17 @@ import java.util.concurrent.TimeoutException;
  * <p/>
  * [Does stuff]
  */
-public class SpringIntegrationEventsPublisher implements EventsPublisher {
+public class SpringIntegrationEventsPublisher extends DefaultEventsPublisher implements EventsPublisher {
 
     private final static Logger log = Logger.getLogger(SpringIntegrationEventsPublisher.class);
-    public static final String NULL_RESULT = "nullResult";
 
     private EventsPublisherGateway eventsPublisherGateway;
-    private TaskExecutor taskExecutor;
-
-    public void setTaskExecutor(TaskExecutor taskExecutor) {
-        this.taskExecutor = taskExecutor;
-    }
 
     public void setEventsPublisherGateway(EventsPublisherGateway eventsPublisherGateway) {
         this.eventsPublisherGateway = eventsPublisherGateway;
     }
 
+    @Override
     public EventReply event(final EventMessage event) {
         try {
             Message<?> res = eventsPublisherGateway.send(event.getData(), event, event.getEvent());
@@ -70,6 +64,7 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         return new EventReply(null, 0);
     }
 
+    @Override
     public EventReply eventAsync(final EventMessage event) {
         return new WrappedFuture(
                 eventsPublisherGateway.sendAsync(event.getData(), event, event.getEvent()),
@@ -77,6 +72,7 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         );
     }
 
+    @Override
     public void eventAsync(final EventMessage event, final Closure onComplete) {
         taskExecutor.execute(new Runnable() {
 
@@ -93,6 +89,7 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         });
     }
 
+    @Override
     public EventReply[] waitFor(EventReply... replies) throws ExecutionException, InterruptedException {
         for (EventReply reply : replies) {
             reply.get();
