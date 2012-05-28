@@ -294,7 +294,6 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         protected Object handleRequestMessage(Message<?> message) {
             EventMessage eventObject = (EventMessage) message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
             Object res = null;
-
             if (listenerId.getScope() == null || listenerId.getScope().equals(ListenerId.SCOPE_WILDCARD) || eventObject.getScope().equalsIgnoreCase(listenerId.getScope())) {
                 Message<?> _message = useEventMessage ?
                         MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
