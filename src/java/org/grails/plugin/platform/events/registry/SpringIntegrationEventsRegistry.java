@@ -28,6 +28,7 @@ import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.beans.factory.support.BeanDefinitionReaderUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.integration.Message;
@@ -138,7 +139,16 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         serviceActivatingHandler.setChannelResolver(resolver);
         serviceActivatingHandler.setRequiresReply(true);
         serviceActivatingHandler.setOutputChannel(outputChannel);
-        beanFactory.registerSingleton(callBackId.replaceFirst("\\*", "_all"), serviceActivatingHandler);
+        String beanIdBase = listener.getClassName();
+        int counter = 0;
+        String beanId;
+
+        do{
+            counter++;
+            beanId = beanIdBase + BeanDefinitionReaderUtils.GENERATED_BEAN_NAME_SEPARATOR + counter;
+        }while(beanFactory.containsBean(beanId));
+
+        beanFactory.registerSingleton(beanId, serviceActivatingHandler);
         serviceActivatingHandler.afterPropertiesSet();
 
         SubscribableChannel bridgeChannel = null;
@@ -289,6 +299,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
                 Message<?> _message = useEventMessage ?
                         MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
                         message;
+                System.out.println(""+this.filterClass);
 
                 if ((filterClass == null && filterClosure == null) ||
                         (_message.getPayload() != null && (filterClass != null && filterClass.isAssignableFrom(_message.getPayload().getClass())) ||
