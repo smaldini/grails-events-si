@@ -100,7 +100,7 @@ class SomeController{
 ```
 
 ##### Async events
-Asyncronous events can be sent from domains, services and controllers artefacts by using "EventReply asyncEvent(String topic, Object data)" :
+Asyncronous events can be sent from domains, services and controllers artefacts by using "EventReply eventAsync(String topic, Object data)" :
 
 ```groovy
 class SomeService{
@@ -117,7 +117,7 @@ class SomeService{
 class SomeController{
 
    def logout(){
-      def reply = asyncEvent('logout', session.user)
+      def reply = eventAsync('logout', session.user)
       render reply.value //block the thread until event response and display disconnectDate
    }
 }
@@ -144,9 +144,9 @@ class SomeService{
 class SomeController{
 
    def logout(){
-      def reply = asyncEvent('logout', session.user)
-      def reply2 = asyncEvent('logout', session.user)
-      def reply3 = asyncEvent('logout', session.user)
+      def reply = eventAsync('logout', session.user)
+      def reply2 = eventAsync('logout', session.user)
+      def reply3 = eventAsync('logout', session.user)
 
       waitFor(reply,reply2,reply3).each{EventReply reply->
         render reply.value +'</br>'
