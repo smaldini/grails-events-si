@@ -53,8 +53,10 @@ public class SpringIntegrationEventsPublisher extends DefaultEventsPublisher imp
     @Override
     public EventReply event(final EventMessage event) {
         try {
-            Message<?> res = eventsPublisherGateway.send(event.getData(), event, event.getEvent());
-            return new EventReply(res.getPayload(), res.getHeaders().getSequenceSize());
+            if(event.getData() != null){
+                Message<?> res = eventsPublisherGateway.send(event.getData(), event, event.getEvent());
+                return new EventReply(res.getPayload(), res.getHeaders().getSequenceSize());
+            }
         } catch (MessagingException rre) {
             if (log.isDebugEnabled()) {
                 log.debug("Missing reply on event " + event.getEvent() + " for scope " +
