@@ -93,7 +93,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return _channel;
     }
 
-    private String registerHandler(Object bean, Method callback, String scope, String topic) {
+    private String registerHandler(Object bean, Method callback, String scope, String topic, Object filter) {
         Object target = bean;
 
         //todo expose param to let the listener traversing proxies (like tx)
@@ -108,7 +108,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         ListenerId listener = ListenerId.build(scope, topic, target, callback);
 
         ServiceActivatingHandler serviceActivatingHandler =
-                new GrailsServiceActivatingHandler(target, callback, listener);
+                new GrailsServiceActivatingHandler(target, callback, listener, filter);
 
 
         initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
@@ -116,12 +116,12 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return listener.toString();
     }
 
-    private String registerHandler(Closure callback, String scope, String topic) {
+    private String registerHandler(Closure callback, String scope, String topic, Object filter) {
 
         ListenerId listener = ListenerId.build(scope, topic, callback);
 
         ServiceActivatingHandler serviceActivatingHandler =
-                new GrailsServiceActivatingHandler(callback, "call", listener);
+                new GrailsServiceActivatingHandler(callback, "call", listener, filter);
 
         initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
 
@@ -138,7 +138,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         serviceActivatingHandler.setChannelResolver(resolver);
         serviceActivatingHandler.setRequiresReply(true);
         serviceActivatingHandler.setOutputChannel(outputChannel);
-        beanFactory.registerSingleton(callBackId.replaceFirst("\\*","_all"), serviceActivatingHandler);
+        beanFactory.registerSingleton(callBackId.replaceFirst("\\*", "_all"), serviceActivatingHandler);
         serviceActivatingHandler.afterPropertiesSet();
 
         SubscribableChannel bridgeChannel = null;
@@ -172,15 +172,27 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     }
 
     public String addListener(String scope, String topic, Closure callback) {
-        return registerHandler(callback, scope, topic);
+        return registerHandler(callback, scope, topic, null);
     }
 
     public String addListener(String scope, String topic, Object bean, String callbackName) {
-        return registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName), scope, topic);
+        return registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName), scope, topic, null);
     }
 
     public String addListener(String scope, String topic, Object bean, Method callback) {
-        return registerHandler(bean, callback, scope, topic);
+        return registerHandler(bean, callback, scope, topic, null);
+    }
+
+    public String addListener(String scope, String topic, Closure callback, Object filter) {
+        return registerHandler(callback, scope, topic, filter);
+    }
+
+    public String addListener(String scope, String topic, Object bean, String callbackName, Object filter) {
+        return registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName), scope, topic, filter);
+    }
+
+    public String addListener(String scope, String topic, Object bean, Method callback, Object filter) {
+        return registerHandler(bean, callback, scope, topic, filter);
     }
 
     private List<GrailsServiceActivatingHandler> findAllListenersFor(String callbackId) {
@@ -239,19 +251,32 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         private ListenerId listenerId;
         private boolean useEventMessage = false;
+        private Class<?> filterClass = null;
+        private Closure<?> filterClosure = null;
 
-        public GrailsServiceActivatingHandler(Object object, String methodName, ListenerId listenerId) {
-            super(object, methodName);
+        private void init(ListenerId listenerId, Object filter) {
             this.listenerId = listenerId;
+
+            if (filter != null && Closure.class.isAssignableFrom(filter.getClass())) {
+                filterClosure = (Closure<?>) filter;
+            }
+            if (filter != null && Class.class.isAssignableFrom(filter.getClass())) {
+                filterClass = (Class<?>) filter;
+            }
         }
 
-        public GrailsServiceActivatingHandler(Object object, Method method, ListenerId listenerId) {
+        public GrailsServiceActivatingHandler(Object object, String methodName, ListenerId listenerId, Object filter) {
+            super(object, methodName);
+            init(listenerId, filter);
+        }
+
+        public GrailsServiceActivatingHandler(Object object, Method method, ListenerId listenerId, Object filter) {
             super(object, method);
+            init(listenerId, filter);
             if (method.getParameterTypes().length > 0) {
                 Class<?> type = method.getParameterTypes()[0];
                 useEventMessage = EventMessage.class.isAssignableFrom(type);
             }
-            this.listenerId = listenerId;
         }
 
 
@@ -259,12 +284,17 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         protected Object handleRequestMessage(Message<?> message) {
             EventMessage eventObject = (EventMessage) message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
             Object res = null;
-            if (listenerId.getScope() == null || listenerId.getScope().equals(ListenerId.SCOPE_WILDCARD) ||eventObject.getScope().equalsIgnoreCase(listenerId.getScope())){
-                Message<?> _message = useEventMessage ?
-                                                MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
-                                                message;
 
-                res = super.handleRequestMessage(_message);
+            if (listenerId.getScope() == null || listenerId.getScope().equals(ListenerId.SCOPE_WILDCARD) || eventObject.getScope().equalsIgnoreCase(listenerId.getScope())) {
+                Message<?> _message = useEventMessage ?
+                        MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
+                        message;
+
+                if ((filterClass == null && filterClosure == null) ||
+                        (_message.getPayload() != null && (filterClass != null && filterClass.isAssignableFrom(_message.getPayload().getClass())) ||
+                                filterClosure != null && (Boolean) ((Closure<?>) filterClosure.clone()).call(_message.getPayload()))) {
+                    res = super.handleRequestMessage(_message);
+                }
             }
             if (res == null) {
                 //Return TRUE if GORM event to bypass cancel
