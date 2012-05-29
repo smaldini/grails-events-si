@@ -213,7 +213,6 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         Map<String, GrailsServiceActivatingHandler> grailsListeners = ctx.getBeansOfType(GrailsServiceActivatingHandler.class);
         for (Map.Entry<String, GrailsServiceActivatingHandler> _listener : grailsListeners.entrySet()) {
-            System.out.println(_listener.getKey());
             if (listener.matches(_listener.getValue().getListenerId()))
                 targetListeners.add(_listener.getValue());
         }
