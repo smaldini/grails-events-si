@@ -298,7 +298,6 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
                 Message<?> _message = useEventMessage ?
                         MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
                         message;
-                System.out.println(""+this.filterClass);
 
                 if ((filterClass == null && filterClosure == null) ||
                         (_message.getPayload() != null && (filterClass != null && filterClass.isAssignableFrom(_message.getPayload().getClass())) ||
