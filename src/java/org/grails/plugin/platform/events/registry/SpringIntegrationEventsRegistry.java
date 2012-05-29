@@ -59,7 +59,6 @@ import java.util.Map;
 public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFactoryAware, ApplicationContextAware {
 
     static final private Logger log = Logger.getLogger(SpringIntegrationEventsRegistry.class);
-    public static final String GORM_EVENT_KEY = "applicationEvent";
 
     private ApplicationContext ctx;
     private ConfigurableBeanFactory beanFactory;
@@ -212,9 +211,11 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         if (listener == null)
             return targetListeners;
 
+        System.out.println(listener);
         Map<String, GrailsServiceActivatingHandler> grailsListeners = ctx.getBeansOfType(GrailsServiceActivatingHandler.class);
         for (Map.Entry<String, GrailsServiceActivatingHandler> _listener : grailsListeners.entrySet()) {
-            if (listener.equals(_listener.getKey()))
+            System.out.println(_listener.getKey());
+            if (listener.matches(_listener.getValue().getListenerId()))
                 targetListeners.add(_listener.getValue());
         }
 
@@ -225,6 +226,8 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         if (callbackId == null) return 0;
 
         List<GrailsServiceActivatingHandler> targetListeners = findAllListenersFor(callbackId);
+
+        System.out.println(targetListeners);
 
         if (targetListeners.isEmpty()) {
             return 0;

@@ -67,19 +67,19 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 //    def scm = [ url: "http://svn.grails-plugins.codehaus.org/browse/grails-plugins/" ]
 
     def doWithSpring = {
+        def config = application.config.plugin.platformCore
+
         xmlns si: 'http://www.springframework.org/schema/integration'
 
         def grailsChannel = "grailsPipeline" //todo config
         def grailsReplyChannel = grailsChannel + 'Reply' //todo config
-        def gormChannel = "grailsGormPipeline" //todo config
-        //def grailsReplyChannel = "grailsReplyPipeline" //todo config
 
         channelNullReplyInterceptor(NullReplyInterceptor)
 
         /* Declare main grails pipeline and its router to reach listeners */
         channelPersistentContextInterceptor(PersistentContextInterceptor) {
             persistenceInterceptor = ref("persistenceInterceptor")
-            catchFlushExceptions = true //todo config
+            catchFlushExceptions = config.events.catchFlushExceptions
         }
 
         grailsTopicAggregator(SpringIntegrationRepliesAggregator)
@@ -118,7 +118,6 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
         grailsEventsPublisher(SpringIntegrationEventsPublisher) {
             eventsPublisherGateway = ref('eventsPublisherGateway')
             taskExecutor = ref('grailsTopicExecutor')
-            gormTopicSupport = ref("gormTopicSupport")
 
         }
         grailsEventsRegistry(SpringIntegrationEventsRegistry) {
