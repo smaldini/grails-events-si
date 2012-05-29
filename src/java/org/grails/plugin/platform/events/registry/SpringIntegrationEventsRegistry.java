@@ -211,7 +211,6 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         if (listener == null)
             return targetListeners;
 
-        System.out.println(listener);
         Map<String, GrailsServiceActivatingHandler> grailsListeners = ctx.getBeansOfType(GrailsServiceActivatingHandler.class);
         for (Map.Entry<String, GrailsServiceActivatingHandler> _listener : grailsListeners.entrySet()) {
             System.out.println(_listener.getKey());
@@ -226,8 +225,6 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         if (callbackId == null) return 0;
 
         List<GrailsServiceActivatingHandler> targetListeners = findAllListenersFor(callbackId);
-
-        System.out.println(targetListeners);
 
         if (targetListeners.isEmpty()) {
             return 0;
