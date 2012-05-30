@@ -19,6 +19,7 @@ package org.grails.plugin.platform.events.registry;
 
 import groovy.lang.Closure;
 import org.apache.log4j.Logger;
+import org.grails.plugin.platform.events.EventDefinition;
 import org.grails.plugin.platform.events.EventMessage;
 import org.grails.plugin.platform.events.ListenerId;
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway;
@@ -93,7 +94,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return _channel;
     }
 
-    private String registerHandler(Object bean, Method callback, String scope, String topic, Object filter) {
+    private String registerHandler(Object bean, Method callback, String scope, String topic, EventDefinition defintion) {
         Object target = bean;
 
         //todo expose param to let the listener traversing proxies (like tx)
@@ -108,7 +109,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         ListenerId listener = ListenerId.build(scope, topic, target, callback);
 
         ServiceActivatingHandler serviceActivatingHandler =
-                new GrailsServiceActivatingHandler(target, callback, listener, filter);
+                new GrailsServiceActivatingHandler(target, callback, listener, defintion);
 
 
         initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
@@ -116,12 +117,12 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return listener.toString();
     }
 
-    private String registerHandler(Closure callback, String scope, String topic, Object filter) {
+    private String registerHandler(Closure callback, String scope, String topic, EventDefinition definition) {
 
         ListenerId listener = ListenerId.build(scope, topic, callback);
 
         ServiceActivatingHandler serviceActivatingHandler =
-                new GrailsServiceActivatingHandler(callback, "call", listener, filter);
+                new GrailsServiceActivatingHandler(callback, "call", listener, definition);
 
         initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
 
@@ -142,10 +143,10 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         int counter = 0;
         String beanId;
 
-        do{
+        do {
             counter++;
             beanId = beanIdBase + BeanDefinitionReaderUtils.GENERATED_BEAN_NAME_SEPARATOR + counter;
-        }while(beanFactory.containsBean(beanId));
+        } while (beanFactory.containsBean(beanId));
 
         beanFactory.registerSingleton(beanId, serviceActivatingHandler);
         serviceActivatingHandler.afterPropertiesSet();
@@ -192,16 +193,16 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return registerHandler(bean, callback, scope, topic, null);
     }
 
-    public String addListener(String scope, String topic, Closure callback, Object filter) {
-        return registerHandler(callback, scope, topic, filter);
+    public String addListener(String scope, String topic, Closure callback, EventDefinition definition) {
+        return registerHandler(callback, scope, topic, definition);
     }
 
-    public String addListener(String scope, String topic, Object bean, String callbackName, Object filter) {
-        return registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName), scope, topic, filter);
+    public String addListener(String scope, String topic, Object bean, String callbackName, EventDefinition definition) {
+        return registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName), scope, topic, definition);
     }
 
-    public String addListener(String scope, String topic, Object bean, Method callback, Object filter) {
-        return registerHandler(bean, callback, scope, topic, filter);
+    public String addListener(String scope, String topic, Object bean, Method callback, EventDefinition definition) {
+        return registerHandler(bean, callback, scope, topic, definition);
     }
 
     private List<GrailsServiceActivatingHandler> findAllListenersFor(String callbackId) {
@@ -260,28 +261,21 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         private ListenerId listenerId;
         private boolean useEventMessage = false;
-        private Class<?> filterClass = null;
-        private Closure<?> filterClosure = null;
+        private EventDefinition definition;
 
-        private void init(ListenerId listenerId, Object filter) {
+        private void init(ListenerId listenerId, EventDefinition definition) {
             this.listenerId = listenerId;
-
-            if (filter != null && Closure.class.isAssignableFrom(filter.getClass())) {
-                filterClosure = (Closure<?>) filter;
-            }
-            if (filter != null && Class.class.isAssignableFrom(filter.getClass())) {
-                filterClass = (Class<?>) filter;
-            }
+            this.definition = definition;
         }
 
-        public GrailsServiceActivatingHandler(Object object, String methodName, ListenerId listenerId, Object filter) {
+        public GrailsServiceActivatingHandler(Object object, String methodName, ListenerId listenerId, EventDefinition definition) {
             super(object, methodName);
-            init(listenerId, filter);
+            init(listenerId, definition);
         }
 
-        public GrailsServiceActivatingHandler(Object object, Method method, ListenerId listenerId, Object filter) {
+        public GrailsServiceActivatingHandler(Object object, Method method, ListenerId listenerId, EventDefinition definition) {
             super(object, method);
-            init(listenerId, filter);
+            init(listenerId, definition);
             if (method.getParameterTypes().length > 0) {
                 Class<?> type = method.getParameterTypes()[0];
                 useEventMessage = EventMessage.class.isAssignableFrom(type);
@@ -298,9 +292,10 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
                         MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
                         message;
 
-                if ((filterClass == null && filterClosure == null) ||
-                        (_message.getPayload() != null && (filterClass != null && filterClass.isAssignableFrom(_message.getPayload().getClass())) ||
-                                filterClosure != null && (Boolean) ((Closure<?>) filterClosure.clone()).call(_message.getPayload()))) {
+                if (definition == null || (definition.getFilterClass() == null && definition.getFilterClosure() == null) ||
+                        (_message.getPayload() != null && (definition.getFilterClass() != null && definition.getFilterClass().isAssignableFrom(_message.getPayload().getClass())) ||
+                                definition.getFilterClosure() != null && (Boolean) ((Closure<?>) definition.getFilterClosure().clone()).call(_message.getPayload()))) {
+
                     res = super.handleRequestMessage(_message);
                 }
             }
