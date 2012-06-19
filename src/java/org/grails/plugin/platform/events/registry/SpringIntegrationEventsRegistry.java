@@ -88,7 +88,8 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         _channel.setApplySequence(true);
         _channel.setBeanName(channelName);
         _channel.setBeanFactory(beanFactory);
-        _channel.addInterceptor(interceptor);
+        if(interceptor != null)
+        	_channel.addInterceptor(interceptor);
         beanFactory.registerSingleton(channelName, _channel);
 
         return _channel;

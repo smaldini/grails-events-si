@@ -24,133 +24,138 @@ import org.grails.plugin.platform.events.publisher.SpringIntegrationRepliesAggre
 import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistry
 
 class EventsSiGrailsPlugin {
-    // the plugin version
-    def version = "1.0.M2-SNAPSHOT"
-    // the version or versions of Grails the plugin is designed for
-    def grailsVersion = "2.0 > *"
-    // the other plugins this plugin depends on
-    //def dependsOn = ['platform-core']
-    // resources that are excluded from plugin packaging
-    def pluginExcludes = [
-            "grails-app/**"
-    ]
+	// the plugin version
+	def version = "1.0.M2-SNAPSHOT"
+	// the version or versions of Grails the plugin is designed for
+	def grailsVersion = "2.0 > *"
+	// the other plugins this plugin depends on
+	//def dependsOn = ['platform-core']
+	// resources that are excluded from plugin packaging
+	def pluginExcludes = [
+		"grails-app/**"
+	]
 
-    def loadAfter = ['platform-core']
+	def loadAfter = ['platform-core']
 
-    // TODO Fill in these fields
-    def title = "Events Si Plugin" // Headline display name of the plugin
-    def author = "Stephane Maldini"
-    def authorEmail = "stephane.maldini@gmail.com"
-    def description = '''\
+	// TODO Fill in these fields
+	def title = "Events Si Plugin" // Headline display name of the plugin
+	def author = "Stephane Maldini"
+	def authorEmail = "stephane.maldini@gmail.com"
+	def description = '''\
 Standard Events system  for Grails implementation.
 This plugin is a Spring Integration implementation and uses its artefacts to map listeners, senders and events messages.
 '''
 
-    // URL to the plugin's documentation
-    def documentation = "http://grails.org/plugin/events-si"
+	// URL to the plugin's documentation
+	def documentation = "http://grails.org/plugin/events-si"
 
-    // Extra (optional) plugin metadata
+	// Extra (optional) plugin metadata
 
-    // License: one of 'APACHE', 'GPL2', 'GPL3'
-    def license = "APACHE"
+	// License: one of 'APACHE', 'GPL2', 'GPL3'
+	def license = "APACHE"
 
-    // Details of company behind the plugin (if there is one)
-    def organization = [name: "GrailsRocks", url: "http://www.grailsrocks.com/"]
+	// Details of company behind the plugin (if there is one)
+	def organization = [name: "GrailsRocks", url: "http://www.grailsrocks.com/"]
 
-    // Any additional developers beyond the author specified above.
-    def developers = [[name: "Marc Palmer", email: "marc@anyware.co.uk"], [name: "Stephane Maldini", email: "stephane.maldini@gmail.com"]]
+	// Any additional developers beyond the author specified above.
+	def developers = [[name: "Marc Palmer", email: "marc@anyware.co.uk"], [name: "Stephane Maldini", email: "stephane.maldini@gmail.com"]]
 
-    // Location of the plugin's issue tracker.
-//    def issueManagement = [ system: "JIRA", url: "http://jira.grails.org/browse/GPMYPLUGIN" ]
+	// Location of the plugin's issue tracker.
+	//    def issueManagement = [ system: "JIRA", url: "http://jira.grails.org/browse/GPMYPLUGIN" ]
 
-    // Online location of the plugin's browseable source code.
-//    def scm = [ url: "http://svn.grails-plugins.codehaus.org/browse/grails-plugins/" ]
+	// Online location of the plugin's browseable source code.
+	//    def scm = [ url: "http://svn.grails-plugins.codehaus.org/browse/grails-plugins/" ]
 
-    def doWithSpring = {
-        def config = application.config.plugin.platformCore
+	def doWithSpring = {
+		def config = application.config.plugin.platformCore
 
-        xmlns si: 'http://www.springframework.org/schema/integration'
+		xmlns si: 'http://www.springframework.org/schema/integration'
 
-        def grailsChannel = "grailsPipeline" //todo config
-        def grailsReplyChannel = grailsChannel + 'Reply' //todo config
+		def grailsChannel = "grailsPipeline" //todo config
+		def grailsReplyChannel = grailsChannel + 'Reply' //todo config
 
-        channelNullReplyInterceptor(NullReplyInterceptor)
+		channelNullReplyInterceptor(NullReplyInterceptor)
 
-        /* Declare main grails pipeline and its router to reach listeners */
-        channelPersistentContextInterceptor(PersistentContextInterceptor) {
-            persistenceInterceptor = ref("persistenceInterceptor")
-            catchFlushExceptions = config.events.catchFlushExceptions
-        }
+		/* Declare main grails pipeline and its router to reach listeners */
+		def addContext = false
+		if(springConfig.containsBean('persistenceInterceptor')){
+			addContext = true
+			channelPersistentContextInterceptor(PersistentContextInterceptor) {
+				persistenceInterceptor = ref("persistenceInterceptor")
+				catchFlushExceptions = config.events.catchFlushExceptions
+			}
+		}
 
-        grailsTopicAggregator(SpringIntegrationRepliesAggregator)
+		grailsTopicAggregator(SpringIntegrationRepliesAggregator)
 
-        si.'publish-subscribe-channel'(id: grailsChannel) {
-            si.interceptors {
-                ref(bean: 'channelNullReplyInterceptor')
-            }
-        }
+		si.'publish-subscribe-channel'(id: grailsChannel) {
+			si.interceptors {
+				ref(bean: 'channelNullReplyInterceptor')
+			}
+		}
 
-        //si.transformer(expression: "payload.getData()")
-        si.'header-value-router'(id: 'grailsRouter', 'input-channel': grailsChannel, 'header-name': EventsPublisherGateway.TARGET_CHANNEL,
-                'ignore-send-failures': true,
-                'resolution-required': false,
-                'default-output-channel': "nullChannel"
-        )
+		//si.transformer(expression: "payload.getData()")
+		si.'header-value-router'(id: 'grailsRouter', 'input-channel': grailsChannel, 'header-name': EventsPublisherGateway.TARGET_CHANNEL,
+				'ignore-send-failures': true,
+				'resolution-required': false,
+				'default-output-channel': "nullChannel"
+				)
 
-        si.channel(id: grailsReplyChannel)
+		si.channel(id: grailsReplyChannel)
 
-        si.chain(id: 'grailsReplyChainHandler', 'input-channel': grailsReplyChannel) {
-            si.filter(expression: 'headers.replyChannel != null')
-            si.aggregator(ref: 'grailsTopicAggregator')
-        }
-
-
-        si.gateway(
-                id: 'eventsPublisherGateway',
-                'service-interface': EventsPublisherGateway.class.name,
-                'default-request-channel': grailsChannel,
-                'async-executor': 'grailsTopicExecutor'
-        ) {
-            si.method(name: 'sendAsync', requestChannel: grailsChannel)
-            si.method(name: 'send', requestChannel: grailsChannel)
-        }
-
-        grailsEventsPublisher(SpringIntegrationEventsPublisher) {
-            eventsPublisherGateway = ref('eventsPublisherGateway')
-            taskExecutor = ref('grailsTopicExecutor')
-
-        }
-        grailsEventsRegistry(SpringIntegrationEventsRegistry) {
-            outputChannel = ref(grailsReplyChannel)
-            interceptor = ref('channelPersistentContextInterceptor')
-        }
-
-        //si.'aggregator'(id:'multipleListenersAggregator', 'input-channel': grailsReplyChannel)
-
-        /* END GENERAL */
-
-        /* Listeners config  */
-
-        /*Events.eachListener(application.serviceClasses*.clazz) {String listenerId, Method m, Class c ->
-            si.'publish-subscribe-channel'(id: EventsRegistry.GRAILS_TOPIC_PREFIX + listenerId, 'apply-sequence': true) {
-                si.interceptors {
-                    ref(bean: 'channelPersistentContextInterceptor')
-                }
-            }
-        }*/
-
-    }
+		si.chain(id: 'grailsReplyChainHandler', 'input-channel': grailsReplyChannel) {
+			si.filter(expression: 'headers.replyChannel != null')
+			si.aggregator(ref: 'grailsTopicAggregator')
+		}
 
 
+		si.gateway(
+				id: 'eventsPublisherGateway',
+				'service-interface': EventsPublisherGateway.class.name,
+				'default-request-channel': grailsChannel,
+				'async-executor': 'grailsTopicExecutor'
+				) {
+					si.method(name: 'sendAsync', requestChannel: grailsChannel)
+					si.method(name: 'send', requestChannel: grailsChannel)
+				}
 
-    def onChange = { event ->
-        // TODO Implement code that is executed when any artefact that this plugin is
-        // watching is modified and reloaded. The event contains: event.source,
-        // event.application, event.manager, event.ctx, and event.plugin.
-    }
+		grailsEventsPublisher(SpringIntegrationEventsPublisher) {
+			eventsPublisherGateway = ref('eventsPublisherGateway')
+			taskExecutor = ref('grailsTopicExecutor')
 
-    def onConfigChange = { event ->
-        // TODO Implement code that is executed when the project configuration changes.
-        // The event is the same as for 'onChange'.
-    }
+		}
+		grailsEventsRegistry(SpringIntegrationEventsRegistry) {
+			outputChannel = ref(grailsReplyChannel)
+			if(addContext)
+				interceptor = ref('channelPersistentContextInterceptor')
+		}
+
+		//si.'aggregator'(id:'multipleListenersAggregator', 'input-channel': grailsReplyChannel)
+
+		/* END GENERAL */
+
+		/* Listeners config  */
+
+		/*Events.eachListener(application.serviceClasses*.clazz) {String listenerId, Method m, Class c ->
+		 si.'publish-subscribe-channel'(id: EventsRegistry.GRAILS_TOPIC_PREFIX + listenerId, 'apply-sequence': true) {
+		 si.interceptors {
+		 ref(bean: 'channelPersistentContextInterceptor')
+		 }
+		 }
+		 }*/
+
+	}
+
+
+
+	def onChange = { event ->
+		// TODO Implement code that is executed when any artefact that this plugin is
+		// watching is modified and reloaded. The event contains: event.source,
+		// event.application, event.manager, event.ctx, and event.plugin.
+	}
+
+	def onConfigChange = { event ->
+		// TODO Implement code that is executed when the project configuration changes.
+		// The event is the same as for 'onChange'.
+	}
 }
