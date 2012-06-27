@@ -58,7 +58,8 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
 
     public EventReply event(final EventMessage event) {
         try {
-            Message<?> res = eventsPublisherGateway.send(event.getData(), event, event.getEvent());
+            Object data = event.getData() != null ? event.getData() : new TrackableNullResult();
+            Message<?> res = eventsPublisherGateway.send(data, event, event.getEvent());
             return new EventReply(res.getPayload(), res.getHeaders().getSequenceSize());
         } catch (MessagingException rre) {
             if (log.isDebugEnabled()) {
@@ -70,8 +71,9 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
     }
 
     public EventReply eventAsync(final EventMessage event) {
+        Object data = event.getData() != null ? event.getData() : new TrackableNullResult();
         return new WrappedFuture(
-                eventsPublisherGateway.sendAsync(event.getData(), event, event.getEvent()),
+                eventsPublisherGateway.sendAsync(data, event, event.getEvent()),
                 -1
         );
     }
@@ -80,8 +82,9 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         taskExecutor.execute(new Runnable() {
 
             public void run() {
+                Object data = event.getData() != null ? event.getData() : new TrackableNullResult();
                 Message<?> res =
-                        eventsPublisherGateway.send(event.getData(), event,
+                        eventsPublisherGateway.send(data, event,
                                 event.getEvent());
 
                 onComplete.call(
