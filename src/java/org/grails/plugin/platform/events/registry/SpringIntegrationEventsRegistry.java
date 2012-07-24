@@ -19,7 +19,6 @@ package org.grails.plugin.platform.events.registry;
 
 import groovy.lang.Closure;
 import org.apache.log4j.Logger;
-import org.grails.plugin.platform.events.EventDefinition;
 import org.grails.plugin.platform.events.EventMessage;
 import org.grails.plugin.platform.events.ListenerId;
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway;
@@ -34,13 +33,22 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.integration.Message;
 import org.springframework.integration.MessageChannel;
+import org.springframework.integration.MessageDispatchingException;
+import org.springframework.integration.MessagingException;
+import org.springframework.integration.annotation.Header;
+import org.springframework.integration.annotation.Router;
 import org.springframework.integration.channel.ChannelInterceptor;
+import org.springframework.integration.channel.MessagePublishingErrorHandler;
 import org.springframework.integration.channel.PublishSubscribeChannel;
+import org.springframework.integration.core.MessageHandler;
 import org.springframework.integration.core.SubscribableChannel;
+import org.springframework.integration.dispatcher.BroadcastingDispatcher;
 import org.springframework.integration.handler.BridgeHandler;
 import org.springframework.integration.handler.ServiceActivatingHandler;
+import org.springframework.integration.router.RecipientListRouter;
 import org.springframework.integration.support.MessageBuilder;
 import org.springframework.integration.support.channel.BeanFactoryChannelResolver;
+import org.springframework.integration.util.ErrorHandlingTaskExecutor;
 import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Method;
@@ -66,6 +74,8 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     private BeanFactoryChannelResolver resolver;
     private MessageChannel outputChannel;
     private ChannelInterceptor interceptor;
+    private final List<GrailsPublishSubscribeChannel> grailsPublishSubscribeChannels
+            = new ArrayList<GrailsPublishSubscribeChannel>();
 
     public void setInterceptor(ChannelInterceptor interceptor) {
         this.interceptor = interceptor;
@@ -75,7 +85,20 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         this.outputChannel = outputChannel;
     }
 
-    private SubscribableChannel createChannel(String channelName) {
+    @Router
+    public List<MessageChannel> route(@Header(EventsPublisherGateway.EVENT_OBJECT_KEY)EventMessage eventMessage){
+        List<MessageChannel> messageChannels = new ArrayList<MessageChannel>();
+        ListenerId listenerId = new ListenerId(eventMessage.getNamespace(), eventMessage.getEvent());
+        for (GrailsPublishSubscribeChannel _listener : this.grailsPublishSubscribeChannels) {
+            if (listenerId.matches(_listener.getListenerId())) {
+                messageChannels.add(_listener);
+            }
+        }
+
+        return messageChannels;
+    }
+
+    private SubscribableChannel createChannel(String channelName, ListenerId listenerId) {
         GrailsPublishSubscribeChannel _channel;
         try {
             _channel = ctx.getBean(channelName, GrailsPublishSubscribeChannel.class);
@@ -84,18 +107,26 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
             log.debug("no overriding/existing channel found " + be.getMessage());
         }
 
-        _channel = new GrailsPublishSubscribeChannel();
+        _channel = new GrailsPublishSubscribeChannel(listenerId);
         _channel.setApplySequence(true);
         _channel.setBeanName(channelName);
         _channel.setBeanFactory(beanFactory);
-        if(interceptor != null)
-        	_channel.addInterceptor(interceptor);
+
+        if (interceptor != null)
+            _channel.addInterceptor(interceptor);
+
+        _channel.afterPropertiesSet();
+
         beanFactory.registerSingleton(channelName, _channel);
+
+        synchronized (grailsPublishSubscribeChannels) {
+            grailsPublishSubscribeChannels.add(_channel);
+        }
 
         return _channel;
     }
 
-    private String registerHandler(Object bean, Method callback, String scope, String topic, EventDefinition defintion) {
+    private String registerHandler(Object bean, Method callback, String scope, String topic) {
         Object target = bean;
 
         //todo expose param to let the listener traversing proxies (like tx)
@@ -110,7 +141,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         ListenerId listener = ListenerId.build(scope, topic, target, callback);
 
         ServiceActivatingHandler serviceActivatingHandler =
-                new GrailsServiceActivatingHandler(target, callback, listener, defintion);
+                new GrailsServiceActivatingHandler(target, callback, listener);
 
 
         initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
@@ -118,12 +149,12 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return listener.toString();
     }
 
-    private String registerHandler(Closure callback, String scope, String topic, EventDefinition definition) {
+    private String registerHandler(Closure callback, String scope, String topic) {
 
         ListenerId listener = ListenerId.build(scope, topic, callback);
 
         ServiceActivatingHandler serviceActivatingHandler =
-                new GrailsServiceActivatingHandler(callback, "call", listener, definition);
+                new GrailsServiceActivatingHandler(callback, "call", listener);
 
         initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
 
@@ -154,7 +185,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         SubscribableChannel bridgeChannel = null;
         SubscribableChannel channel = null;
-        String channelName = listener.getTopic();
+        String channelName = listener.getNamespace()+"://"+listener.getTopic();
 
 
         try {
@@ -165,9 +196,9 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         if (bridgeChannel == null || !bridgeChannel.getClass().isAssignableFrom(GrailsPublishSubscribeChannel.class)) {
             if (bridgeChannel != null) {
-                channelName += "-plugin";
+                channelName += "-local";
             }
-            channel = createChannel(channelName);
+            channel = createChannel(channelName, listener);
         } else {
             channel = bridgeChannel;
         }
@@ -182,28 +213,16 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
     }
 
-    public String addListener(String scope, String topic, Closure callback) {
-        return registerHandler(callback, scope, topic, null);
+    public String on(String scope, String topic, Closure callback) {
+        return registerHandler(callback, scope, topic);
     }
 
-    public String addListener(String scope, String topic, Object bean, String callbackName) {
-        return registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName), scope, topic, null);
+    public String on(String scope, String topic, Object bean, String callbackName) {
+        return registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName), scope, topic);
     }
 
-    public String addListener(String scope, String topic, Object bean, Method callback) {
-        return registerHandler(bean, callback, scope, topic, null);
-    }
-
-    public String addListener(String scope, String topic, Closure callback, EventDefinition definition) {
-        return registerHandler(callback, scope, topic, definition);
-    }
-
-    public String addListener(String scope, String topic, Object bean, String callbackName, EventDefinition definition) {
-        return registerHandler(bean, ReflectionUtils.findMethod(bean.getClass(), callbackName), scope, topic, definition);
-    }
-
-    public String addListener(String scope, String topic, Object bean, Method callback, EventDefinition definition) {
-        return registerHandler(bean, callback, scope, topic, definition);
+    public String on(String scope, String topic, Object bean, Method callback) {
+        return registerHandler(bean, callback, scope, topic);
     }
 
     private List<GrailsServiceActivatingHandler> findAllListenersFor(String callbackId) {
@@ -256,27 +275,34 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     }
 
     private static class GrailsPublishSubscribeChannel extends PublishSubscribeChannel {
+        private ListenerId listenerId;
+
+        private GrailsPublishSubscribeChannel(ListenerId listenerId) {
+            this.listenerId = listenerId;
+        }
+
+        public ListenerId getListenerId() {
+            return listenerId;
+        }
     }
 
     private class GrailsServiceActivatingHandler extends ServiceActivatingHandler implements EventHandler {
 
         private ListenerId listenerId;
         private boolean useEventMessage = false;
-        private EventDefinition definition;
 
-        private void init(ListenerId listenerId, EventDefinition definition) {
+        private void init(ListenerId listenerId) {
             this.listenerId = listenerId;
-            this.definition = definition;
         }
 
-        public GrailsServiceActivatingHandler(Object object, String methodName, ListenerId listenerId, EventDefinition definition) {
+        public GrailsServiceActivatingHandler(Object object, String methodName, ListenerId listenerId) {
             super(object, methodName);
-            init(listenerId, definition);
+            init(listenerId);
         }
 
-        public GrailsServiceActivatingHandler(Object object, Method method, ListenerId listenerId, EventDefinition definition) {
+        public GrailsServiceActivatingHandler(Object object, Method method, ListenerId listenerId) {
             super(object, method);
-            init(listenerId, definition);
+            init(listenerId);
             if (method.getParameterTypes().length > 0) {
                 Class<?> type = method.getParameterTypes()[0];
                 useEventMessage = EventMessage.class.isAssignableFrom(type);
@@ -288,18 +314,10 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         protected Object handleRequestMessage(Message<?> message) {
             EventMessage eventObject = (EventMessage) message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
             Object res = null;
-            if (listenerId.getScope() == null || listenerId.getScope().equals(ListenerId.SCOPE_WILDCARD) || eventObject.getScope().equalsIgnoreCase(listenerId.getScope())) {
-                Message<?> _message = useEventMessage ?
-                        MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
-                        message;
-
-                if (definition == null || (definition.getFilterClass() == null && definition.getFilterClosure() == null) ||
-                        (_message.getPayload() != null && (definition.getFilterClass() != null && definition.getFilterClass().isAssignableFrom(_message.getPayload().getClass())) ||
-                                definition.getFilterClosure() != null && (Boolean) ((Closure<?>) definition.getFilterClosure().clone()).call(_message.getPayload()))) {
-
-                    res = super.handleRequestMessage(_message);
-                }
-            }
+            Message<?> _message = useEventMessage ?
+                    MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
+                    message;
+            res = super.handleRequestMessage(_message);
             if (res == null) {
                 //Return TRUE if GORM event to bypass cancel
                 //Else return FALSE for other events (never returning true)

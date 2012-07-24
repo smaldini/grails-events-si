@@ -12,10 +12,11 @@ grails.project.dependency.resolution = {
 	}
 	log "warn" // log level of Ivy resolver, either 'error', 'warn', 'info', 'debug' or 'verbose'
 	repositories {
+        mavenLocal()
 		grailsCentral()
 	}
 	dependencies {
-		compile('org.springframework.integration:spring-integration-core:2.1.2.RELEASE') {
+		compile('org.springframework.integration:spring-integration-core:2.1.3.RELEASE') {
 			excludes 'spring-context', 'spring-aop', "xml-apis", "commons-digester"
 		}
 		// runtime 'mysql:mysql-connector-java:5.1.5'
@@ -28,7 +29,9 @@ grails.project.dependency.resolution = {
 				) {
 					export = false
 				}
-		compile ':platform-core:1.0.M2f-SNAPSHOT'
+		compile (':platform-core:1.0.M2'){
+            changing = true
+        }
 
 	}
 }

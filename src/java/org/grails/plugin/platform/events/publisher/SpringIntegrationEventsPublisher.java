@@ -64,7 +64,7 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         } catch (MessagingException rre) {
             if (log.isDebugEnabled()) {
                 log.debug("Missing reply on event " + event.getEvent() + " for scope " +
-                        event.getScope() + " for one or more listeners - " + rre.getMessage());
+                        event.getNamespace() + " for one or more listeners - " + rre.getMessage());
             }
         }
         return new EventReply(null, 0);
@@ -130,12 +130,8 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         }
 
         @Override
-        public int size() {
-            try {
-                get();
-            } catch (InterruptedException e) {
-            } catch (ExecutionException e) {
-            }
+        public int size() throws Exception {
+            get();
             return super.size();
         }
 

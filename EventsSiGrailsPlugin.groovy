@@ -25,7 +25,7 @@ import org.grails.plugin.platform.events.registry.SpringIntegrationEventsRegistr
 
 class EventsSiGrailsPlugin {
 	// the plugin version
-	def version = "1.0.M2-SNAPSHOT"
+	def version = "1.0.M2"
 	// the version or versions of Grails the plugin is designed for
 	def grailsVersion = "2.0 > *"
 	// the other plugins this plugin depends on
@@ -95,11 +95,11 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 		}
 
 		//si.transformer(expression: "payload.getData()")
-		si.'header-value-router'(id: 'grailsRouter', 'input-channel': grailsChannel, 'header-name': EventsPublisherGateway.TARGET_CHANNEL,
+		si.router(id: 'grailsRouter', ref:'grailsEventsRegistry', method:'route', 'input-channel': grailsChannel, 'header-name': EventsPublisherGateway.TARGET_CHANNEL,
 				'ignore-send-failures': true,
 				'resolution-required': false,
 				'default-output-channel': "nullChannel"
-				)
+		)
 
 		si.channel(id: grailsReplyChannel)
 
