@@ -19,40 +19,37 @@ package org.grails.plugin.platform.events.registry;
 
 import groovy.lang.Closure;
 import org.apache.log4j.Logger;
+import org.codehaus.groovy.grails.commons.spring.WebRuntimeSpringConfiguration;
 import org.grails.plugin.platform.events.EventMessage;
 import org.grails.plugin.platform.events.ListenerId;
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway;
-import org.grails.plugin.platform.events.publisher.TrackableNullResult;
 import org.springframework.aop.framework.Advised;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.MutablePropertyValues;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
-import org.springframework.beans.factory.config.ConfigurableBeanFactory;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.ConstructorArgumentValues;
 import org.springframework.beans.factory.support.BeanDefinitionReaderUtils;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
+import org.springframework.beans.factory.support.GenericBeanDefinition;
+import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
-import org.springframework.integration.Message;
 import org.springframework.integration.MessageChannel;
-import org.springframework.integration.MessageDispatchingException;
-import org.springframework.integration.MessagingException;
 import org.springframework.integration.annotation.Header;
 import org.springframework.integration.annotation.Router;
 import org.springframework.integration.channel.ChannelInterceptor;
-import org.springframework.integration.channel.MessagePublishingErrorHandler;
 import org.springframework.integration.channel.PublishSubscribeChannel;
-import org.springframework.integration.core.MessageHandler;
 import org.springframework.integration.core.SubscribableChannel;
-import org.springframework.integration.dispatcher.BroadcastingDispatcher;
 import org.springframework.integration.handler.BridgeHandler;
 import org.springframework.integration.handler.ServiceActivatingHandler;
-import org.springframework.integration.router.RecipientListRouter;
-import org.springframework.integration.support.MessageBuilder;
 import org.springframework.integration.support.channel.BeanFactoryChannelResolver;
-import org.springframework.integration.util.ErrorHandlingTaskExecutor;
 import org.springframework.util.ReflectionUtils;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -68,14 +65,17 @@ import java.util.Map;
 public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFactoryAware, ApplicationContextAware {
 
     static final private Logger log = Logger.getLogger(SpringIntegrationEventsRegistry.class);
+    static final private String APP_NAMESPACE = "app";
 
     private ApplicationContext ctx;
-    private ConfigurableBeanFactory beanFactory;
+    private BeanDefinitionRegistry beanFactory;
     private BeanFactoryChannelResolver resolver;
     private MessageChannel outputChannel;
     private ChannelInterceptor interceptor;
-    private final List<GrailsPublishSubscribeChannel> grailsPublishSubscribeChannels
-            = new ArrayList<GrailsPublishSubscribeChannel>();
+    private final Map<ListenerId, SubscribableChannel> grailsPublishSubscribeChannels
+            = new HashMap<ListenerId, SubscribableChannel>();
+    private static final String HANDLER_SUFFIX = "#eventsHandler";
+
 
     public void setInterceptor(ChannelInterceptor interceptor) {
         this.interceptor = interceptor;
@@ -86,12 +86,12 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     }
 
     @Router
-    public List<MessageChannel> route(@Header(EventsPublisherGateway.EVENT_OBJECT_KEY)EventMessage eventMessage){
+    public List<MessageChannel> route(@Header(EventsPublisherGateway.EVENT_OBJECT_KEY) EventMessage eventMessage) {
         List<MessageChannel> messageChannels = new ArrayList<MessageChannel>();
         ListenerId listenerId = new ListenerId(eventMessage.getNamespace(), eventMessage.getEvent());
-        for (GrailsPublishSubscribeChannel _listener : this.grailsPublishSubscribeChannels) {
-            if (listenerId.matches(_listener.getListenerId())) {
-                messageChannels.add(_listener);
+        for (Map.Entry<ListenerId, SubscribableChannel> _listener : this.grailsPublishSubscribeChannels.entrySet()) {
+            if (listenerId.matches(_listener.getKey())) {
+                messageChannels.add(_listener.getValue());
             }
         }
 
@@ -107,23 +107,23 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
             log.debug("no overriding/existing channel found " + be.getMessage());
         }
 
-        _channel = new GrailsPublishSubscribeChannel(listenerId);
-        _channel.setApplySequence(true);
-        _channel.setBeanName(channelName);
-        _channel.setBeanFactory(beanFactory);
+        GenericBeanDefinition beanDefinition = new GenericBeanDefinition();
+        ConstructorArgumentValues constArgs = new ConstructorArgumentValues();
+        constArgs.addIndexedArgumentValue(0, listenerId);
 
+        MutablePropertyValues mbValues = new MutablePropertyValues();
+        mbValues.add("applySequence", true);
         if (interceptor != null)
-            _channel.addInterceptor(interceptor);
+            mbValues.add("interceptor", interceptor);
 
-        _channel.afterPropertiesSet();
+        beanDefinition.setConstructorArgumentValues(constArgs);
+        beanDefinition.setPropertyValues(mbValues);
+        beanDefinition.setBeanClass(GrailsPublishSubscribeChannel.class);
+        beanDefinition.setAutowireCandidate(true);
 
-        beanFactory.registerSingleton(channelName, _channel);
+        beanFactory.registerBeanDefinition(channelName, beanDefinition);
 
-        synchronized (grailsPublishSubscribeChannels) {
-            grailsPublishSubscribeChannels.add(_channel);
-        }
-
-        return _channel;
+        return ctx.getBean(channelName, GrailsPublishSubscribeChannel.class);
     }
 
     private String registerHandler(Object bean, Method callback, String scope, String topic) {
@@ -140,9 +140,14 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         ListenerId listener = ListenerId.build(scope, topic, target, callback);
 
-        ServiceActivatingHandler serviceActivatingHandler =
-                new GrailsServiceActivatingHandler(target, callback, listener);
+//        ServiceActivatingHandler serviceActivatingHandler =
+//                new GrailsServiceActivatingHandler(target, callback, listener);
 
+        GenericBeanDefinition serviceActivatingHandler = new GenericBeanDefinition();
+        ConstructorArgumentValues constArgs = new ConstructorArgumentValues();
+        constArgs.addIndexedArgumentValue(0, target);
+        constArgs.addIndexedArgumentValue(1, callback);
+        serviceActivatingHandler.setConstructorArgumentValues(constArgs);
 
         initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
 
@@ -153,39 +158,54 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         ListenerId listener = ListenerId.build(scope, topic, callback);
 
-        ServiceActivatingHandler serviceActivatingHandler =
-                new GrailsServiceActivatingHandler(callback, "call", listener);
+        GenericBeanDefinition serviceActivatingHandler = new GenericBeanDefinition();
+        ConstructorArgumentValues constArgs = new ConstructorArgumentValues();
+        constArgs.addIndexedArgumentValue(0, callback);
+        constArgs.addIndexedArgumentValue(1, "call");
+        serviceActivatingHandler.setConstructorArgumentValues(constArgs);
+
+//        ServiceActivatingHandler serviceActivatingHandler =
+//                new GrailsServiceActivatingHandler(callback, "call", listener);
 
         initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
 
         return listener.toString();
     }
 
-    private void initServiceActivatingHandler(ServiceActivatingHandler serviceActivatingHandler, ListenerId listener, String topic) {
+    private void initServiceActivatingHandler(final GenericBeanDefinition serviceActivatingHandler, final ListenerId listener, final String topic) {
         if (topic == null || topic.isEmpty()) {
             throw new RuntimeException("topic name must not be null or empty");
         }
 
-        String callBackId = listener.toString();
-        serviceActivatingHandler.setBeanName(callBackId);
-        serviceActivatingHandler.setChannelResolver(resolver);
-        serviceActivatingHandler.setRequiresReply(true);
-        serviceActivatingHandler.setOutputChannel(outputChannel);
+        serviceActivatingHandler.getConstructorArgumentValues().addIndexedArgumentValue(2, listener);
+
+        MutablePropertyValues mbValues = new MutablePropertyValues();
+        mbValues.add("channelResolver", resolver);
+        mbValues.add("requiresReply", true);
+        mbValues.add("outputChannel", outputChannel);
+        serviceActivatingHandler.setPropertyValues(mbValues);
+        serviceActivatingHandler.setBeanClass(GrailsServiceActivatingHandler.class);
+
         String beanIdBase = listener.getClassName();
         int counter = 0;
         String beanId;
 
         do {
             counter++;
-            beanId = beanIdBase + BeanDefinitionReaderUtils.GENERATED_BEAN_NAME_SEPARATOR + counter;
-        } while (beanFactory.containsBean(beanId));
+            beanId = beanIdBase + HANDLER_SUFFIX + BeanDefinitionReaderUtils.GENERATED_BEAN_NAME_SEPARATOR + counter;
+        } while (ctx.containsBean(beanId));
 
-        beanFactory.registerSingleton(beanId, serviceActivatingHandler);
-        serviceActivatingHandler.afterPropertiesSet();
+        beanFactory.registerBeanDefinition(beanId, serviceActivatingHandler);
+        ServiceActivatingHandler _serviceActivatingHandler = ctx.getBean(beanId, ServiceActivatingHandler.class);
 
         SubscribableChannel bridgeChannel = null;
         SubscribableChannel channel = null;
-        String channelName = listener.getNamespace()+"://"+listener.getTopic();
+        String channelName =
+                (
+                        listener.getNamespace() != null &&
+                                !listener.getNamespace().equalsIgnoreCase(APP_NAMESPACE) ? listener.getNamespace() + "://" : ""
+                )
+                        + listener.getTopic();
 
 
         try {
@@ -203,7 +223,11 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
             channel = bridgeChannel;
         }
 
-        channel.subscribe(serviceActivatingHandler);
+        synchronized (grailsPublishSubscribeChannels) {
+            grailsPublishSubscribeChannels.put(listener, channel);
+        }
+
+        channel.subscribe(_serviceActivatingHandler);
 
         if (bridgeChannel != null && !bridgeChannel.getClass().isAssignableFrom(GrailsPublishSubscribeChannel.class)) {
             BridgeHandler bridgeHandler = new BridgeHandler();
@@ -225,17 +249,17 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return registerHandler(bean, callback, scope, topic);
     }
 
-    private List<GrailsServiceActivatingHandler> findAllListenersFor(String callbackId) {
+    private Map<String, GrailsServiceActivatingHandler> findAllListenersFor(String callbackId) {
         ListenerId listener = ListenerId.parse(callbackId);
 
-        List<GrailsServiceActivatingHandler> targetListeners = new ArrayList<GrailsServiceActivatingHandler>();
+        Map<String, GrailsServiceActivatingHandler> targetListeners = new HashMap<String, GrailsServiceActivatingHandler>();
         if (listener == null)
             return targetListeners;
 
         Map<String, GrailsServiceActivatingHandler> grailsListeners = ctx.getBeansOfType(GrailsServiceActivatingHandler.class);
         for (Map.Entry<String, GrailsServiceActivatingHandler> _listener : grailsListeners.entrySet()) {
             if (listener.matches(_listener.getValue().getListenerId()))
-                targetListeners.add(_listener.getValue());
+                targetListeners.put(_listener.getKey(), _listener.getValue());
         }
 
         return targetListeners;
@@ -244,7 +268,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     public int removeListeners(String callbackId) {
         if (callbackId == null) return 0;
 
-        List<GrailsServiceActivatingHandler> targetListeners = findAllListenersFor(callbackId);
+        Map<String, GrailsServiceActivatingHandler> targetListeners = findAllListenersFor(callbackId);
 
         if (targetListeners.isEmpty()) {
             return 0;
@@ -254,10 +278,18 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         int removed = 0;
         for (Map.Entry<String, PublishSubscribeChannel> entry : channels.entrySet()) {
-            for (GrailsServiceActivatingHandler _listener : targetListeners) {
-                if (entry.getValue().unsubscribe(_listener)) removed++;
+            for (Map.Entry<String, GrailsServiceActivatingHandler> _listener : targetListeners.entrySet()) {
+                if (entry.getValue().unsubscribe(_listener.getValue())) removed++;
             }
         }
+        for (String key : targetListeners.keySet()) {
+            try {
+                beanFactory.removeBeanDefinition(key);
+            } catch (Exception e) {
+                log.error("failed to destroy bean named : " + key);
+            }
+        }
+        log.info(findAllListenersFor(callbackId).size());
         return removed;
     }
 
@@ -270,7 +302,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     }
 
     public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
-        this.beanFactory = (ConfigurableBeanFactory) beanFactory;
+        this.beanFactory = (BeanDefinitionRegistry) beanFactory;
         this.resolver = new BeanFactoryChannelResolver(beanFactory);
     }
 
@@ -286,54 +318,4 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         }
     }
 
-    private class GrailsServiceActivatingHandler extends ServiceActivatingHandler implements EventHandler {
-
-        private ListenerId listenerId;
-        private boolean useEventMessage = false;
-
-        private void init(ListenerId listenerId) {
-            this.listenerId = listenerId;
-        }
-
-        public GrailsServiceActivatingHandler(Object object, String methodName, ListenerId listenerId) {
-            super(object, methodName);
-            init(listenerId);
-        }
-
-        public GrailsServiceActivatingHandler(Object object, Method method, ListenerId listenerId) {
-            super(object, method);
-            init(listenerId);
-            if (method.getParameterTypes().length > 0) {
-                Class<?> type = method.getParameterTypes()[0];
-                useEventMessage = EventMessage.class.isAssignableFrom(type);
-            }
-        }
-
-
-        @Override
-        protected Object handleRequestMessage(Message<?> message) {
-            EventMessage eventObject = (EventMessage) message.getHeaders().get(EventsPublisherGateway.EVENT_OBJECT_KEY);
-            Object res = null;
-            Message<?> _message = useEventMessage ?
-                    MessageBuilder.withPayload(eventObject).copyHeaders(message.getHeaders()).build() :
-                    message;
-            res = super.handleRequestMessage(_message);
-            if (res == null) {
-                //Return TRUE if GORM event to bypass cancel
-                //Else return FALSE for other events (never returning true)
-                return new TrackableNullResult();
-            }
-            return res;
-        }
-
-        public boolean isUseEventMessage() {
-            return useEventMessage;
-        }
-
-        public ListenerId getListenerId() {
-            return listenerId;
-        }
-
-
-    }
 }

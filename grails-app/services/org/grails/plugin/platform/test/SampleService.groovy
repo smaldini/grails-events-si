@@ -48,6 +48,6 @@ class SampleService {
     @Listener(namespace = 'lal', topic='*')
     def sampleHella(test) {
         println "Adios bus) - $test"
-
+        'ddsddd'
     }
 }
