@@ -130,13 +130,13 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         Object target = bean;
 
         //todo expose param to let the listener traversing proxies (like tx)
-        if (bean instanceof Advised) {
+        /*if (bean instanceof Advised) {
             try {
                 target = ((Advised) bean).getTargetSource().getTarget();
             } catch (Exception e) {
                 log.error("failed to retrieve bean origin from proxy", e);
             }
-        }
+        }*/
 
         ListenerId listener = ListenerId.build(scope, topic, target, callback);
 
@@ -289,7 +289,6 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
                 log.error("failed to destroy bean named : " + key);
             }
         }
-        log.info(findAllListenersFor(callbackId).size());
         return removed;
     }
 

@@ -130,7 +130,7 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         }
 
         @Override
-        public int size() throws Exception {
+        public int size() throws Throwable {
             get();
             return super.size();
         }
