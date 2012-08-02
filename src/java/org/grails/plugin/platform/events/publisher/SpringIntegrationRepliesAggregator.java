@@ -50,8 +50,10 @@ public class SpringIntegrationRepliesAggregator {
                 payload.add(message.getPayload());
         }
 
-
-        return MessageBuilder.withPayload(payload.size() == 1 ? payload.get(0) : payload).setSequenceSize(payload.size()).build();
+        if(payload.isEmpty())
+            return MessageBuilder.withPayload(new TrackableNullResult()).build();
+        else
+            return MessageBuilder.withPayload(payload.size() == 1 ? payload.get(0) : (payload.size())).setSequenceSize(payload.size()).build();
     }
 
 }

@@ -95,9 +95,8 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 		}
 
 		//si.transformer(expression: "payload.getData()")
-		si.router(id: 'grailsRouter', ref:'grailsEventsRegistry', method:'route', 'input-channel': grailsChannel, 'header-name': EventsPublisherGateway.TARGET_CHANNEL,
-				'ignore-send-failures': true,
-				'resolution-required': false,
+		si.router(id: 'grailsRouter', ref:'grailsEventsRegistry', method:'route', 'input-channel': grailsChannel,
+				'apply-sequence': true,
 				'default-output-channel': "nullChannel"
 		)
 
@@ -105,6 +104,7 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 
 		si.chain(id: 'grailsReplyChainHandler', 'input-channel': grailsReplyChannel) {
 			si.filter(expression: 'headers.replyChannel != null')
+			si.aggregator(ref: 'grailsTopicAggregator')
 			si.aggregator(ref: 'grailsTopicAggregator')
 		}
 

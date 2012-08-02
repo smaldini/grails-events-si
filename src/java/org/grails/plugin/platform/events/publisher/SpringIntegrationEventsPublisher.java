@@ -27,6 +27,7 @@ import org.springframework.integration.MessageDeliveryException;
 import org.springframework.integration.MessagingException;
 import org.springframework.integration.handler.ReplyRequiredException;
 
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -70,29 +71,36 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         return new EventReply(null, 0);
     }
 
-    public EventReply eventAsync(final EventMessage event) {
+    public EventReply eventAsync(final EventMessage event, final Map<String, Object> params) {
         Object data = event.getData() != null ? event.getData() : new TrackableNullResult();
-        return new WrappedFuture(
+        final WrappedFuture reply = new WrappedFuture(
                 eventsPublisherGateway.sendAsync(data, event, event.getEvent()),
                 -1
         );
-    }
 
-    public void eventAsync(final EventMessage event, final Closure onComplete) {
-        taskExecutor.execute(new Runnable() {
+        if (params != null) {
+            reply.setOnError((Closure)params.get(ON_ERROR));
+            if (params.get(ON_REPLY) != null) {
+                taskExecutor.execute(new Runnable() {
 
-            public void run() {
-                Object data = event.getData() != null ? event.getData() : new TrackableNullResult();
-                Message<?> res =
-                        eventsPublisherGateway.send(data, event,
-                                event.getEvent());
+                    public void run() {
+                        try {
+                            if (params.get(TIMEOUT) != null)
+                                reply.get((Long) params.get(TIMEOUT), TimeUnit.MILLISECONDS);
+                            else
+                                reply.get();
 
-                onComplete.call(
-                        new EventReply(res.getPayload(),
-                                res.getHeaders().getSequenceSize()
-                        ));
+                            reply.throwError();
+                            ((Closure) params.get(ON_REPLY)).call(reply);
+                        } catch (Throwable e) {
+                            reply.setCallingError(e);
+                        }
+                    }
+                });
+
             }
-        });
+        }
+        return reply;
     }
 
     public EventReply[] waitFor(EventReply... replies) throws ExecutionException, InterruptedException {
@@ -112,14 +120,14 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         protected void initValues(Object val) {
             Message<?> message = (Message<?>) val;
             setReceivers(message.getHeaders().getSequenceSize());
-            super.initValues(message.getPayload());
+            super.initValues(message.getPayload().getClass().isAssignableFrom(TrackableNullResult.class) ?
+            null : message.getPayload());
         }
 
         @Override
         public Object get() throws InterruptedException, ExecutionException {
             try {
-                super.get();
-                return getValue();
+                return super.get();
             } catch (ExecutionException mde) {
                 if (mde.getCause() != null && (mde.getCause().getClass().equals(MessageDeliveryException.class) ||
                         mde.getCause().getClass().equals(ReplyRequiredException.class)))
@@ -138,10 +146,16 @@ public class SpringIntegrationEventsPublisher implements EventsPublisher {
         @Override
         public Object get(long l, TimeUnit timeUnit) throws InterruptedException, ExecutionException, TimeoutException {
             try {
-                super.get(l, timeUnit);
-                return getValue();
+                return super.get(l, timeUnit);
             } catch (MessageDeliveryException mde) {
                 return null;
+            }
+        }
+
+        public void setCallingError(Throwable e) {
+            super.initValues(e);
+            if(getOnError() != null){
+                getOnError().call(this);
             }
         }
     }

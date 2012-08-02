@@ -128,17 +128,18 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
     private String registerHandler(Object bean, Method callback, String scope, String topic) {
         Object target = bean;
+        Object realTarget = bean;
 
         //todo expose param to let the listener traversing proxies (like tx)
-        /*if (bean instanceof Advised) {
+        if (bean instanceof Advised) {
             try {
-                target = ((Advised) bean).getTargetSource().getTarget();
+                realTarget = ((Advised) bean).getTargetSource().getTarget();
             } catch (Exception e) {
                 log.error("failed to retrieve bean origin from proxy", e);
             }
-        }*/
+        }
 
-        ListenerId listener = ListenerId.build(scope, topic, target, callback);
+        ListenerId listener = ListenerId.build(scope, topic, realTarget, callback);
 
 //        ServiceActivatingHandler serviceActivatingHandler =
 //                new GrailsServiceActivatingHandler(target, callback, listener);
