@@ -225,7 +225,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         }
 
         synchronized (grailsPublishSubscribeChannels) {
-            grailsPublishSubscribeChannels.put(listener, channel);
+            grailsPublishSubscribeChannels.put(listener, bridgeChannel == null ? channel : bridgeChannel);
         }
 
         channel.subscribe(_serviceActivatingHandler);
