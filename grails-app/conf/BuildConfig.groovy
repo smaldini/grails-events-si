@@ -29,7 +29,7 @@ grails.project.dependency.resolution = {
 				) {
 					export = false
 				}
-		compile (':platform-core:1.0.M2-SNAPSHOT')
+		compile (':platform-core:1.0.M3')
 
 	}
 }
