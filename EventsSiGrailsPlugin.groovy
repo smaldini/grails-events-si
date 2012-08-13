@@ -32,7 +32,8 @@ class EventsSiGrailsPlugin {
 	//def dependsOn = ['platform-core']
 	// resources that are excluded from plugin packaging
 	def pluginExcludes = [
-		"grails-app/**"
+		"grails-app/**",
+        "web-app/**"
 	]
 
 	def loadAfter = ['platform-core']
