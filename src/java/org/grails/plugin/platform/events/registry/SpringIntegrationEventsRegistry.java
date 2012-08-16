@@ -30,10 +30,7 @@ import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConstructorArgumentValues;
-import org.springframework.beans.factory.support.BeanDefinitionReaderUtils;
-import org.springframework.beans.factory.support.BeanDefinitionRegistry;
-import org.springframework.beans.factory.support.GenericBeanDefinition;
-import org.springframework.beans.factory.support.RootBeanDefinition;
+import org.springframework.beans.factory.support.*;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.integration.MessageChannel;
@@ -107,21 +104,15 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
             log.debug("no overriding/existing channel found " + be.getMessage());
         }
 
-        GenericBeanDefinition beanDefinition = new GenericBeanDefinition();
-        ConstructorArgumentValues constArgs = new ConstructorArgumentValues();
-        constArgs.addIndexedArgumentValue(0, listenerId);
+        BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(GrailsPublishSubscribeChannel.class)
+                .addConstructorArgValue(listenerId)
+                .addPropertyValue("applySequence", true);
 
-        MutablePropertyValues mbValues = new MutablePropertyValues();
-        mbValues.add("applySequence", true);
-        if (interceptor != null)
-            mbValues.add("interceptor", interceptor);
+        if (interceptor != null){
+            builder.addPropertyValue("interceptors", interceptor);
+        }
 
-        beanDefinition.setConstructorArgumentValues(constArgs);
-        beanDefinition.setPropertyValues(mbValues);
-        beanDefinition.setBeanClass(GrailsPublishSubscribeChannel.class);
-        beanDefinition.setAutowireCandidate(true);
-
-        beanFactory.registerBeanDefinition(channelName, beanDefinition);
+        beanFactory.registerBeanDefinition(channelName, builder.getBeanDefinition());
 
         return ctx.getBean(channelName, GrailsPublishSubscribeChannel.class);
     }
@@ -132,13 +123,15 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 //        ServiceActivatingHandler serviceActivatingHandler =
 //                new GrailsServiceActivatingHandler(target, callback, listener);
 
-        GenericBeanDefinition serviceActivatingHandler = new GenericBeanDefinition();
-        ConstructorArgumentValues constArgs = new ConstructorArgumentValues();
-        constArgs.addIndexedArgumentValue(0, bean);
-        constArgs.addIndexedArgumentValue(1, callback);
-        serviceActivatingHandler.setConstructorArgumentValues(constArgs);
+        BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition()
+                .addConstructorArgValue(bean)
+                .addConstructorArgValue(callback);
 
-        initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
+        if (interceptor != null){
+            builder.addPropertyValue("interceptors", interceptor);
+        }
+
+        initServiceActivatingHandler(builder, listener, topic);
 
         return listener.toString();
     }
@@ -147,33 +140,30 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
         ListenerId listener = ListenerId.build(scope, topic, callback);
 
-        GenericBeanDefinition serviceActivatingHandler = new GenericBeanDefinition();
-        ConstructorArgumentValues constArgs = new ConstructorArgumentValues();
-        constArgs.addIndexedArgumentValue(0, callback);
-        constArgs.addIndexedArgumentValue(1, "call");
-        serviceActivatingHandler.setConstructorArgumentValues(constArgs);
+        BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition()
+                .addConstructorArgValue(callback)
+                .addConstructorArgValue("call");
 
 //        ServiceActivatingHandler serviceActivatingHandler =
 //                new GrailsServiceActivatingHandler(callback, "call", listener);
 
-        initServiceActivatingHandler(serviceActivatingHandler, listener, topic);
+        initServiceActivatingHandler(builder, listener, topic);
 
         return listener.toString();
     }
 
-    private void initServiceActivatingHandler(final GenericBeanDefinition serviceActivatingHandler, final ListenerId listener, final String topic) {
+    private void initServiceActivatingHandler(final BeanDefinitionBuilder serviceActivatingHandler, final ListenerId listener, final String topic) {
         if (topic == null || topic.isEmpty()) {
             throw new RuntimeException("topic name must not be null or empty");
         }
 
-        serviceActivatingHandler.getConstructorArgumentValues().addIndexedArgumentValue(2, listener);
+        serviceActivatingHandler.addConstructorArgValue(listener)
+        .addPropertyValue("channelResolver", resolver)
+        .addPropertyValue("requiresReply", true)
+        .addPropertyValue("outputChannel", outputChannel);
 
-        MutablePropertyValues mbValues = new MutablePropertyValues();
-        mbValues.add("channelResolver", resolver);
-        mbValues.add("requiresReply", true);
-        mbValues.add("outputChannel", outputChannel);
-        serviceActivatingHandler.setPropertyValues(mbValues);
-        serviceActivatingHandler.setBeanClass(GrailsServiceActivatingHandler.class);
+        BeanDefinition beanDefinition = serviceActivatingHandler.getBeanDefinition();
+        serviceActivatingHandler.getBeanDefinition().setBeanClass(GrailsServiceActivatingHandler.class);
 
         String beanIdBase = listener.getClassName();
         int counter = 0;
@@ -184,7 +174,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
             beanId = beanIdBase + HANDLER_SUFFIX + BeanDefinitionReaderUtils.GENERATED_BEAN_NAME_SEPARATOR + counter;
         } while (ctx.containsBean(beanId));
 
-        beanFactory.registerBeanDefinition(beanId, serviceActivatingHandler);
+        beanFactory.registerBeanDefinition(beanId, beanDefinition);
         ServiceActivatingHandler _serviceActivatingHandler = ctx.getBean(beanId, ServiceActivatingHandler.class);
 
         SubscribableChannel bridgeChannel = null;

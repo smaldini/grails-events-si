@@ -56,10 +56,10 @@ This plugin is a Spring Integration implementation and uses its artefacts to map
 	def license = "APACHE"
 
 	// Details of company behind the plugin (if there is one)
-	def organization = [name: "GrailsRocks", url: "http://www.grailsrocks.com/"]
+	def organization = [name: "VMware", url: "http://www.vmware.com/"]
 
 	// Any additional developers beyond the author specified above.
-	def developers = [[name: "Marc Palmer", email: "marc@anyware.co.uk"], [name: "Stephane Maldini", email: "stephane.maldini@gmail.com"]]
+	def developers = [[name: "Stephane Maldini", email: "smaldini@vmware.com"]]
 
 	// Location of the plugin's issue tracker.
 	//    def issueManagement = [ system: "JIRA", url: "http://jira.grails.org/browse/GPMYPLUGIN" ]
