@@ -13,18 +13,20 @@ grails.project.dependency.resolution = {
 	log "warn" // log level of Ivy resolver, either 'error', 'warn', 'info', 'debug' or 'verbose'
 	repositories {
         mavenLocal()
+        mavenRepo 'https://repo.springsource.org/libs-milestone/'
 		grailsCentral()
 	}
 	dependencies {
-		compile('org.springframework.integration:spring-integration-core:2.1.3.RELEASE') {
+		compile('org.springframework.integration:spring-integration-core:2.1.4.RELEASE') {
 			excludes 'spring-context', 'spring-aop', "xml-apis", "commons-digester"
 		}
+        compile('org.springframework.integration:spring-integration-dsl-groovy-core:1.0.0.M1')
 		// runtime 'mysql:mysql-connector-java:5.1.5'
 	}
 
 	plugins {
 		build(":tomcat:$grailsVersion",
-				":release:2.0.3",
+				":release:2.0.4",
 				":hibernate:$grailsVersion"
 				) {
 					export = false
