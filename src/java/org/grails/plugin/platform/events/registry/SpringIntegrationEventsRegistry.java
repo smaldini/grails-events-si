@@ -19,27 +19,22 @@ package org.grails.plugin.platform.events.registry;
 
 import groovy.lang.Closure;
 import org.apache.log4j.Logger;
-import org.codehaus.groovy.grails.commons.spring.WebRuntimeSpringConfiguration;
 import org.grails.plugin.platform.events.EventMessage;
 import org.grails.plugin.platform.events.ListenerId;
 import org.grails.plugin.platform.events.publisher.EventsPublisherGateway;
-import org.springframework.aop.framework.Advised;
 import org.springframework.beans.BeansException;
-import org.springframework.beans.MutablePropertyValues;
 import org.springframework.beans.factory.BeanFactory;
-import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.beans.factory.config.ConstructorArgumentValues;
-import org.springframework.beans.factory.support.*;
+import org.springframework.beans.factory.support.BeanDefinitionBuilder;
+import org.springframework.beans.factory.support.BeanDefinitionReaderUtils;
+import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
 import org.springframework.integration.MessageChannel;
 import org.springframework.integration.annotation.Header;
 import org.springframework.integration.annotation.Router;
 import org.springframework.integration.channel.ChannelInterceptor;
 import org.springframework.integration.channel.PublishSubscribeChannel;
 import org.springframework.integration.core.SubscribableChannel;
-import org.springframework.integration.handler.BridgeHandler;
 import org.springframework.integration.handler.ServiceActivatingHandler;
 import org.springframework.integration.support.channel.BeanFactoryChannelResolver;
 import org.springframework.util.ReflectionUtils;
@@ -59,7 +54,7 @@ import java.util.Map;
  * <p/>
  * [Does stuff]
  */
-public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFactoryAware, ApplicationContextAware {
+public class SpringIntegrationEventsRegistry implements EventsRegistry {
 
     static final private Logger log = Logger.getLogger(SpringIntegrationEventsRegistry.class);
     static final private String APP_NAMESPACE = "app";
@@ -69,10 +64,14 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     private BeanFactoryChannelResolver resolver;
     private MessageChannel outputChannel;
     private ChannelInterceptor interceptor;
-    private final Map<ListenerId, SubscribableChannel> grailsPublishSubscribeChannels
-            = new HashMap<ListenerId, SubscribableChannel>();
+    private final Map<ListenerId, MessageChannel> grailsListenerChannels
+            = new HashMap<ListenerId, MessageChannel>();
     private static final String HANDLER_SUFFIX = "#eventsHandler";
+    private boolean autoBridge = false;
 
+    public void setAutoBridge(boolean autoBridge) {
+        this.autoBridge = autoBridge;
+    }
 
     public void setInterceptor(ChannelInterceptor interceptor) {
         this.interceptor = interceptor;
@@ -86,7 +85,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
     public List<MessageChannel> route(@Header(EventsPublisherGateway.EVENT_OBJECT_KEY) EventMessage eventMessage) {
         List<MessageChannel> messageChannels = new ArrayList<MessageChannel>();
         ListenerId listenerId = new ListenerId(eventMessage.getNamespace(), eventMessage.getEvent());
-        for (Map.Entry<ListenerId, SubscribableChannel> _listener : this.grailsPublishSubscribeChannels.entrySet()) {
+        for (Map.Entry<ListenerId, MessageChannel> _listener : this.grailsListenerChannels.entrySet()) {
             if (listenerId.matches(_listener.getKey())) {
                 messageChannels.add(_listener.getValue());
             }
@@ -95,10 +94,10 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return messageChannels;
     }
 
-    private SubscribableChannel createChannel(String channelName, ListenerId listenerId) {
-        GrailsPublishSubscribeChannel _channel;
+    private SubscribableChannel findOrCreateChannel(String channelName, ListenerId listenerId) {
+        SubscribableChannel _channel;
         try {
-            _channel = ctx.getBean(channelName, GrailsPublishSubscribeChannel.class);
+            _channel = ctx.getBean(channelName, SubscribableChannel.class);
             return _channel;
         } catch (BeansException be) {
             log.debug("no overriding/existing channel found " + be.getMessage());
@@ -108,7 +107,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
                 .addConstructorArgValue(listenerId)
                 .addPropertyValue("applySequence", true);
 
-        if (interceptor != null){
+        if (interceptor != null) {
             builder.addPropertyValue("interceptors", interceptor);
         }
 
@@ -127,7 +126,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
                 .addConstructorArgValue(bean)
                 .addConstructorArgValue(callback);
 
-        if (interceptor != null){
+        if (interceptor != null) {
             builder.addPropertyValue("interceptors", interceptor);
         }
 
@@ -158,9 +157,9 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         }
 
         serviceActivatingHandler.addConstructorArgValue(listener)
-        .addPropertyValue("channelResolver", resolver)
-        .addPropertyValue("requiresReply", true)
-        .addPropertyValue("outputChannel", outputChannel);
+                .addPropertyValue("channelResolver", resolver)
+                .addPropertyValue("requiresReply", true)
+                .addPropertyValue("outputChannel", outputChannel);
 
         BeanDefinition beanDefinition = serviceActivatingHandler.getBeanDefinition();
         serviceActivatingHandler.getBeanDefinition().setBeanClass(GrailsServiceActivatingHandler.class);
@@ -177,7 +176,7 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         beanFactory.registerBeanDefinition(beanId, beanDefinition);
         ServiceActivatingHandler _serviceActivatingHandler = ctx.getBean(beanId, ServiceActivatingHandler.class);
 
-        SubscribableChannel bridgeChannel = null;
+        MessageChannel bridgeChannel = null;
         SubscribableChannel channel = null;
         String channelName =
                 (
@@ -188,32 +187,33 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
 
 
         try {
-            bridgeChannel = ctx.getBean(channelName, SubscribableChannel.class);
+            bridgeChannel = ctx.getBean(channelName, MessageChannel.class);
+
+            if (!GrailsPublishSubscribeChannel.class.isAssignableFrom(bridgeChannel.getClass())) {
+                channel = findOrCreateChannel(channelName + "-local", listener);
+
+                if (autoBridge  && bridgeChannel.getClass().isAssignableFrom(SubscribableChannel.class)) {
+                    BridgeHandler bridgeHandler = new BridgeHandler(channelName);
+                    bridgeHandler.setOutputChannel(channel);
+                    ((SubscribableChannel) bridgeChannel).subscribe(bridgeHandler);
+                }
+
+            } else {
+                channel = (GrailsPublishSubscribeChannel) bridgeChannel;
+            }
+
         } catch (BeansException be) {
             log.debug("no overriding/existing channel found " + be.getMessage());
-        }
 
-        if (bridgeChannel == null || !bridgeChannel.getClass().isAssignableFrom(GrailsPublishSubscribeChannel.class)) {
-            if (bridgeChannel != null) {
-                channelName += "-local";
-            }
-            channel = createChannel(channelName, listener);
-        } else {
-            channel = bridgeChannel;
-        }
-
-        if(bridgeChannel != channel){
-            synchronized (grailsPublishSubscribeChannels) {
-                grailsPublishSubscribeChannels.put(listener, bridgeChannel == null ? channel : bridgeChannel);
-            }
+            channel = findOrCreateChannel(channelName, listener);
         }
 
         channel.subscribe(_serviceActivatingHandler);
 
-        if (bridgeChannel != null && !bridgeChannel.getClass().isAssignableFrom(GrailsPublishSubscribeChannel.class)) {
-            BridgeHandler bridgeHandler = new BridgeHandler();
-            bridgeHandler.setOutputChannel(channel);
-            bridgeChannel.subscribe(bridgeHandler);
+        if (bridgeChannel != channel) {
+            synchronized (grailsListenerChannels) {
+                grailsListenerChannels.put(listener, bridgeChannel == null ? channel : bridgeChannel);
+            }
         }
 
     }
@@ -277,11 +277,11 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         return findAllListenersFor(callbackId).size();
     }
 
-    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+    public void setApplicationContext(ApplicationContext applicationContext) {
         this.ctx = applicationContext;
     }
 
-    public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+    public void setBeanFactory(BeanFactory beanFactory) {
         this.beanFactory = (BeanDefinitionRegistry) beanFactory;
         this.resolver = new BeanFactoryChannelResolver(beanFactory);
     }
@@ -298,4 +298,30 @@ public class SpringIntegrationEventsRegistry implements EventsRegistry, BeanFact
         }
     }
 
+    private static class BridgeHandler extends org.springframework.integration.handler.BridgeHandler{
+
+        private String channel;
+
+        private BridgeHandler(String channel) {
+            super();
+            this.channel = channel;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            BridgeHandler that = (BridgeHandler) o;
+
+            if (!channel.equals(that.channel)) return false;
+
+            return true;
+        }
+
+        @Override
+        public int hashCode() {
+            return channel.hashCode();
+        }
+    }
 }

@@ -33,7 +33,7 @@ class SampleController {
         response.outputStream << "There are ${countListeners('sampleHello')} listeners for topic 'sampleHello' \n"
         response.outputStream << "There are ${countListeners("lal://sampleHello:$SampleService.name")} listeners for class '$SampleService.name' \n"
 
-        response.outputStream << "sync event with replies values : " + event('sampleHello', '{"message":"world"}', [namespace:'lal'])?.values + " \n\n"
+        response.outputStream << "sync event with replies values : " + event('sampleHello', "World", [namespace:'lal'])?.values + " \n\n"
 
 
         //Args form
